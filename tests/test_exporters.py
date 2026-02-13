@@ -9,7 +9,6 @@ import pytest
 import yaml
 
 from ctrlmap_cli.exporters.base import BaseExporter
-from ctrlmap_cli.exporters.governance import GovernanceExporter
 from ctrlmap_cli.exporters.policies import PoliciesExporter
 from ctrlmap_cli.exporters.procedures import ProceduresExporter
 from ctrlmap_cli.exporters.risks import RisksExporter
@@ -60,12 +59,26 @@ class TestBaseExporter:
         exporter._log("hello world")
         assert "hello world" in capsys.readouterr().out
 
-    def test_write_document_creates_all_formats(self, tmp_path: Path) -> None:
+    def test_write_document_creates_md_and_yaml_by_default(self, tmp_path: Path) -> None:
         class Concrete(BaseExporter):
             def export(self) -> None:
                 pass
 
         exporter = Concrete(MagicMock(), tmp_path)
+        exporter._ensure_output_dir()
+        data = {"title": "Test Doc", "body": "Content here.", "status": "active"}
+        exporter._write_document("test-doc", data)
+
+        assert (tmp_path / "test-doc.md").exists()
+        assert not (tmp_path / "test-doc.json").exists()
+        assert (tmp_path / "test-doc.yaml").exists()
+
+    def test_write_document_creates_json_with_keep_raw_json(self, tmp_path: Path) -> None:
+        class Concrete(BaseExporter):
+            def export(self) -> None:
+                pass
+
+        exporter = Concrete(MagicMock(), tmp_path, keep_raw_json=True)
         exporter._ensure_output_dir()
         data = {"title": "Test Doc", "body": "Content here.", "status": "active"}
         exporter._write_document("test-doc", data)
@@ -85,7 +98,7 @@ class TestBaseExporter:
             def export(self) -> None:
                 pass
 
-        exporter = Concrete(MagicMock(), tmp_path)
+        exporter = Concrete(MagicMock(), tmp_path, keep_raw_json=True)
         exporter._ensure_output_dir()
         exporter._write_document("sample", SampleDoc(title="DC Title", body="DC body.", version=2))
 
@@ -96,29 +109,67 @@ class TestBaseExporter:
         assert parsed_yaml["title"] == "DC Title"
 
 
-class TestGovernanceExporter:
-    def test_export_calls_expected_endpoint_and_rule(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.get.return_value = []
+class TestBaseExporterOverwrite:
+    def test_should_write_returns_true_for_new_file(self, tmp_path: Path) -> None:
+        class Concrete(BaseExporter):
+            def export(self) -> None:
+                pass
 
-        exporter = GovernanceExporter(client, tmp_path / "govs")
-        exporter.export()
+        exporter = Concrete(MagicMock(), tmp_path)
+        assert exporter._should_write(tmp_path / "new-file.md") is True
 
-        call_args = client.get.call_args
-        assert call_args[0][0] == "/procedures"
-        assert call_args[1]["params"]["type"] == "governance"
+    def test_should_write_returns_true_with_force(self, tmp_path: Path) -> None:
+        class Concrete(BaseExporter):
+            def export(self) -> None:
+                pass
 
-    def test_export_writes_documents(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.get.return_value = [_raw_procedure_doc(1, "GOV-1"), _raw_procedure_doc(2, "GOV-2")]
+        existing = tmp_path / "existing.md"
+        existing.write_text("content")
 
-        exporter = GovernanceExporter(client, tmp_path / "govs")
-        exporter.export()
+        exporter = Concrete(MagicMock(), tmp_path, force=True)
+        assert exporter._should_write(existing) is True
 
-        for code in ("GOV-1", "GOV-2"):
-            assert (tmp_path / "govs" / f"{code}.md").exists()
-            assert (tmp_path / "govs" / f"{code}.json").exists()
-            assert (tmp_path / "govs" / f"{code}.yaml").exists()
+    def test_should_write_prompts_and_respects_no(self, tmp_path: Path) -> None:
+        class Concrete(BaseExporter):
+            def export(self) -> None:
+                pass
+
+        existing = tmp_path / "existing.md"
+        existing.write_text("content")
+
+        exporter = Concrete(MagicMock(), tmp_path)
+        with patch("builtins.input", return_value="n"):
+            assert exporter._should_write(existing) is False
+
+    def test_should_write_prompts_and_respects_yes(self, tmp_path: Path) -> None:
+        class Concrete(BaseExporter):
+            def export(self) -> None:
+                pass
+
+        existing = tmp_path / "existing.md"
+        existing.write_text("content")
+
+        exporter = Concrete(MagicMock(), tmp_path)
+        with patch("builtins.input", return_value="y"):
+            assert exporter._should_write(existing) is True
+
+    def test_should_write_all_sets_overwrite_all(self, tmp_path: Path) -> None:
+        class Concrete(BaseExporter):
+            def export(self) -> None:
+                pass
+
+        f1 = tmp_path / "a.md"
+        f2 = tmp_path / "b.md"
+        f1.write_text("a")
+        f2.write_text("b")
+
+        exporter = Concrete(MagicMock(), tmp_path)
+        with patch("builtins.input", return_value="a") as mock_input:
+            assert exporter._should_write(f1) is True
+            assert exporter._should_write(f2) is True
+
+        # Only prompted once — second call uses _overwrite_all
+        assert mock_input.call_count == 1
 
 
 class TestPoliciesExporter:
@@ -133,17 +184,25 @@ class TestPoliciesExporter:
         assert call_args[0][0] == "/procedures"
         assert call_args[1]["params"]["type"] == "policy"
 
-    def test_export_writes_documents(self, tmp_path: Path) -> None:
+    def test_export_writes_md_and_yaml_by_default(self, tmp_path: Path) -> None:
         client = MagicMock()
-        client.get.return_value = [_raw_procedure_doc(1, "POL-1"), _raw_procedure_doc(2, "POL-2")]
+        client.get.return_value = [_raw_procedure_doc(1, "POL-1")]
 
-        exporter = PoliciesExporter(client, tmp_path / "policies")
-        exporter.export()
+        PoliciesExporter(client, tmp_path / "policies").export()
 
-        for code in ("POL-1", "POL-2"):
-            assert (tmp_path / "policies" / f"{code}.md").exists()
-            assert (tmp_path / "policies" / f"{code}.json").exists()
-            assert (tmp_path / "policies" / f"{code}.yaml").exists()
+        assert (tmp_path / "policies" / "POL-1.md").exists()
+        assert not (tmp_path / "policies" / "POL-1.json").exists()
+        assert (tmp_path / "policies" / "POL-1.yaml").exists()
+
+    def test_export_writes_json_with_keep_raw_json(self, tmp_path: Path) -> None:
+        client = MagicMock()
+        client.get.return_value = [_raw_procedure_doc(1, "POL-1")]
+
+        PoliciesExporter(client, tmp_path / "policies", keep_raw_json=True).export()
+
+        assert (tmp_path / "policies" / "POL-1.md").exists()
+        assert (tmp_path / "policies" / "POL-1.json").exists()
+        assert (tmp_path / "policies" / "POL-1.yaml").exists()
 
 
 class TestProceduresExporter:
@@ -158,17 +217,15 @@ class TestProceduresExporter:
         assert call_args[0][0] == "/procedures"
         assert call_args[1]["params"]["type"] == "procedure"
 
-    def test_export_writes_documents(self, tmp_path: Path) -> None:
+    def test_export_writes_md_and_yaml_by_default(self, tmp_path: Path) -> None:
         client = MagicMock()
-        client.get.return_value = [_raw_procedure_doc(1, "PRO-1"), _raw_procedure_doc(2, "PRO-2")]
+        client.get.return_value = [_raw_procedure_doc(1, "PRO-1")]
 
-        exporter = ProceduresExporter(client, tmp_path / "procedures")
-        exporter.export()
+        ProceduresExporter(client, tmp_path / "procedures").export()
 
-        for code in ("PRO-1", "PRO-2"):
-            assert (tmp_path / "procedures" / f"{code}.md").exists()
-            assert (tmp_path / "procedures" / f"{code}.json").exists()
-            assert (tmp_path / "procedures" / f"{code}.yaml").exists()
+        assert (tmp_path / "procedures" / "PRO-1.md").exists()
+        assert not (tmp_path / "procedures" / "PRO-1.json").exists()
+        assert (tmp_path / "procedures" / "PRO-1.yaml").exists()
 
 
 class TestRisksExporter:
@@ -181,24 +238,29 @@ class TestRisksExporter:
 
         client.get.assert_called_once_with("/risks")
 
-    def test_export_writes_documents(self, tmp_path: Path) -> None:
+    def test_export_writes_md_and_yaml_by_default(self, tmp_path: Path) -> None:
         client = MagicMock()
-        client.get.return_value = [_raw_risk_doc(1, "RISK-1"), _raw_risk_doc(2, "RISK-2")]
+        client.get.return_value = [_raw_risk_doc(1, "RISK-1")]
 
-        exporter = RisksExporter(client, tmp_path / "risks")
-        exporter.export()
+        RisksExporter(client, tmp_path / "risks").export()
 
-        for code in ("RISK-1", "RISK-2"):
-            assert (tmp_path / "risks" / f"{code}.md").exists()
-            assert (tmp_path / "risks" / f"{code}.json").exists()
-            assert (tmp_path / "risks" / f"{code}.yaml").exists()
+        assert (tmp_path / "risks" / "RISK-1.md").exists()
+        assert not (tmp_path / "risks" / "RISK-1.json").exists()
+        assert (tmp_path / "risks" / "RISK-1.yaml").exists()
+
+    def test_export_writes_json_with_keep_raw_json(self, tmp_path: Path) -> None:
+        client = MagicMock()
+        client.get.return_value = [_raw_risk_doc(1, "RISK-1")]
+
+        RisksExporter(client, tmp_path / "risks", keep_raw_json=True).export()
+
+        assert (tmp_path / "risks" / "RISK-1.json").exists()
 
 
 class TestExporterProgress:
     @pytest.mark.parametrize(
         "exporter_cls, method_name, payload, text",
         [
-            (GovernanceExporter, "get", [_raw_procedure_doc(1, "GOV-1")], "Exporting governance"),
             (PoliciesExporter, "get", [_raw_procedure_doc(1, "POL-1")], "Exporting policies"),
             (ProceduresExporter, "get", [_raw_procedure_doc(1, "PRO-1")], "Exporting procedures"),
             (RisksExporter, "get", [_raw_risk_doc(1, "RISK-1")], "Exporting risks"),
@@ -252,7 +314,9 @@ class TestCliExportWiring:
             from ctrlmap_cli.cli import main
             main()
 
-        gov_cls.assert_called_once_with(client, tmp_path / "govs")
+        gov_cls.assert_called_once_with(
+            client, tmp_path / "govs", force=False, keep_raw_json=False,
+        )
         gov_instance.export.assert_called_once()
 
     def test_copy_all_runs_all_exporters_with_expected_dirs(
@@ -281,12 +345,33 @@ class TestCliExportWiring:
             from ctrlmap_cli.cli import main
             main()
 
-        gov_cls.assert_called_once_with(client, tmp_path / "govs")
-        pol_cls.assert_called_once_with(client, tmp_path / "policies")
-        pro_cls.assert_called_once_with(client, tmp_path / "procedures")
-        risk_cls.assert_called_once_with(client, tmp_path / "risks")
+        kwargs = {"force": False, "keep_raw_json": False}
+        gov_cls.assert_called_once_with(client, tmp_path / "govs", **kwargs)
+        pol_cls.assert_called_once_with(client, tmp_path / "policies", **kwargs)
+        pro_cls.assert_called_once_with(client, tmp_path / "procedures", **kwargs)
+        risk_cls.assert_called_once_with(client, tmp_path / "risks", **kwargs)
 
         gov_instance.export.assert_called_once()
         pol_instance.export.assert_called_once()
         pro_instance.export.assert_called_once()
         risk_instance.export.assert_called_once()
+
+    def test_force_and_keep_raw_json_passed_to_exporters(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        client = self._setup_cli(monkeypatch, tmp_path)
+        gov_cls = MagicMock(return_value=MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.GovernanceExporter", gov_cls)
+        monkeypatch.setattr("ctrlmap_cli.cli.PoliciesExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", MagicMock())
+
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-gov", "--force", "--keep-raw-json"]):
+            from ctrlmap_cli.cli import main
+            main()
+
+        gov_cls.assert_called_once_with(
+            client, tmp_path / "govs", force=True, keep_raw_json=True,
+        )

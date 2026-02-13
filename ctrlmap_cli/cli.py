@@ -34,6 +34,14 @@ def _build_parser() -> argparse.ArgumentParser:
     group.add_argument("--copy-pols", action="store_true", help="Export policies.")
     group.add_argument("--copy-pros", action="store_true", help="Export procedures.")
     group.add_argument("--copy-risks", action="store_true", help="Export risk register.")
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite existing files without confirmation.",
+    )
+    parser.add_argument(
+        "--keep-raw-json", action="store_true",
+        help="Also write raw JSON files alongside Markdown.",
+    )
     return parser
 
 
@@ -73,15 +81,20 @@ def _run_export(args: argparse.Namespace) -> None:
     config = read_config(cwd)
     client = CtrlMapClient(config)
 
+    export_kwargs = {
+        "force": args.force,
+        "keep_raw_json": args.keep_raw_json,
+    }
+
     exporters: List[BaseExporter] = []
     if args.copy_all or args.copy_gov:
-        exporters.append(GovernanceExporter(client, cwd / "govs"))
+        exporters.append(GovernanceExporter(client, cwd / "govs", **export_kwargs))
     if args.copy_all or args.copy_pols:
-        exporters.append(PoliciesExporter(client, cwd / "policies"))
+        exporters.append(PoliciesExporter(client, cwd / "policies", **export_kwargs))
     if args.copy_all or args.copy_pros:
-        exporters.append(ProceduresExporter(client, cwd / "procedures"))
+        exporters.append(ProceduresExporter(client, cwd / "procedures", **export_kwargs))
     if args.copy_all or args.copy_risks:
-        exporters.append(RisksExporter(client, cwd / "risks"))
+        exporters.append(RisksExporter(client, cwd / "risks", **export_kwargs))
 
     for exporter in exporters:
         exporter.export()

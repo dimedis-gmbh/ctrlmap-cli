@@ -219,3 +219,4 @@ node_modules/
 # Folder where LLM/claude tasks and plans are stored
 /plans
 /tasks
+secret_nodes.md

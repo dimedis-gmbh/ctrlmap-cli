@@ -1,14 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import List, Optional
 
 
 @dataclass
 class GovernanceDocument:
-    """Placeholder schema; update fields when real API samples are captured."""
-
     id: int
     code: str
     title: str
     status: str
-    body: str
+    version: str
+    owner: str
+    approver: str
+    contributors: List[str]
+    classification: str
+    review_date: Optional[str]
+    updated: Optional[str]
+    controls: List[str]
+    requirements: List[str]
+    body_html: str
+    body_markdown: str
