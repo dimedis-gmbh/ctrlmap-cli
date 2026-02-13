@@ -8,3 +8,11 @@ class CtrlMapError(Exception):
 
 class ConfigError(CtrlMapError):
     pass
+
+
+class ApiError(CtrlMapError):
+    pass
+
+
+class AuthenticationError(ApiError):
+    pass
