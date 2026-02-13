@@ -18,8 +18,12 @@ def test_version_is_defined() -> None:
     assert __version__ == "0.1.0"
 
 
-def test_cli_main_noop() -> None:
-    cli.main()
+def test_cli_main_no_args_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
+    from unittest.mock import patch
+    with patch("sys.argv", ["ctrlmap-cli"]):
+        cli.main()
+    captured = capsys.readouterr()
+    assert "usage:" in captured.out.lower()
 
 
 @pytest.mark.parametrize(
@@ -100,5 +104,4 @@ def test_python_m_ctrlmap_cli_smoke() -> None:
         check=False,
     )
     assert completed.returncode == 0
-    assert completed.stdout == ""
-    assert completed.stderr == ""
+    assert "usage:" in completed.stdout.lower()
