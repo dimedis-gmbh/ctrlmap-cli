@@ -102,15 +102,17 @@ class TestInitErrors:
                 main()
 
 
-class TestCopyPlaceholders:
+class TestCopyFlagsRequireConfig:
     @pytest.mark.parametrize("flag", [
         "--copy-all", "--copy-gov", "--copy-pols", "--copy-pros", "--copy-risks",
     ])
-    def test_copy_flags_exit_with_not_implemented(self, flag: str) -> None:
+    def test_copy_flags_fail_without_config(
+        self, flag: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
         with patch("sys.argv", ["ctrlmap-cli", flag]):
-            with pytest.raises(SystemExit) as exc_info:
+            with pytest.raises(ConfigError):
                 main()
-            assert exc_info.value.code == 1
 
 
 class TestInitSubprocess:

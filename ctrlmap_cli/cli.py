@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import argparse
 import getpass
-import sys
 from pathlib import Path
+from typing import List
 
-from ctrlmap_cli.config import write_config
+from ctrlmap_cli.client import CtrlMapClient
+from ctrlmap_cli.config import read_config, write_config
 from ctrlmap_cli.exceptions import ConfigError
+from ctrlmap_cli.exporters.base import BaseExporter
+from ctrlmap_cli.exporters.governance import GovernanceExporter
+from ctrlmap_cli.exporters.policies import PoliciesExporter
+from ctrlmap_cli.exporters.procedures import ProceduresExporter
+from ctrlmap_cli.exporters.risks import RisksExporter
 from ctrlmap_cli.models.config import AppConfig
 
 _SUBDIRS = ("govs", "policies", "procedures", "risks")
@@ -62,6 +68,25 @@ def _run_init(api_url: str) -> None:
     print("Created directories: " + ", ".join(f"{d}/" for d in _SUBDIRS))
 
 
+def _run_export(args: argparse.Namespace) -> None:
+    cwd = Path.cwd()
+    config = read_config(cwd)
+    client = CtrlMapClient(config)
+
+    exporters: List[BaseExporter] = []
+    if args.copy_all or args.copy_gov:
+        exporters.append(GovernanceExporter(client, cwd / "govs"))
+    if args.copy_all or args.copy_pols:
+        exporters.append(PoliciesExporter(client, cwd / "policies"))
+    if args.copy_all or args.copy_pros:
+        exporters.append(ProceduresExporter(client, cwd / "procedures"))
+    if args.copy_all or args.copy_risks:
+        exporters.append(RisksExporter(client, cwd / "risks"))
+
+    for exporter in exporters:
+        exporter.export()
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
@@ -69,8 +94,6 @@ def main() -> None:
     if args.init:
         _run_init(args.init)
     elif args.copy_all or args.copy_gov or args.copy_pols or args.copy_pros or args.copy_risks:
-        # Placeholder for export commands (tasks 04-08)
-        print("Export not yet implemented.", file=sys.stderr)
-        sys.exit(1)
+        _run_export(args)
     else:
         parser.print_help()
