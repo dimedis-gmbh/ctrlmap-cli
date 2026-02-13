@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint
+        run: |
+          python -m flake8 .
+
+      - name: Type check
+        run: |
+          python -m mypy .
+
+      - name: Test
+        run: |
+          python -m pytest tests/ --cov=ctrlmap_cli --cov-report=term-missing --cov-fail-under=75
+
+      - name: Build zipapp
+        run: bash build.sh
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ctrlmap-cli
+          generate_release_notes: true
