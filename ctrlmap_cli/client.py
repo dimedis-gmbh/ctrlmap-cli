@@ -10,6 +10,15 @@ from ctrlmap_cli.models.config import AppConfig
 
 
 class CtrlMapClient:
+    _POLICIES_LIST_BODY: Dict[str, Any] = {
+        "startpos": 0,
+        "pagesize": 1000,
+        "sortby": None,
+        "rules": [
+            {"field": "type", "operator": "=", "value": "policy"},
+        ],
+    }
+
     def __init__(self, config: AppConfig) -> None:
         self._base_url = config.api_url
         self._session = requests.Session()
@@ -27,6 +36,33 @@ class CtrlMapClient:
 
     def post(self, path: str, json: Optional[Dict[str, Any]] = None) -> Any:
         return self._request("POST", path, json=json)
+
+    def list_policies(self) -> Any:
+        return self.post("/policies", json=self._POLICIES_LIST_BODY)
+
+    def get_policy(self, policy_id: int) -> Any:
+        return self.get(f"/policy/{policy_id}")
+
+    _PROCEDURES_LIST_BODY: Dict[str, Any] = {
+        "startpos": 0,
+        "pagesize": 500,
+        "sortby": None,
+        "rules": [
+            {"field": "type", "operator": "=", "value": "procedure"},
+        ],
+    }
+
+    def list_procedures(self) -> Any:
+        return self.post("/procedures", json=self._PROCEDURES_LIST_BODY)
+
+    def get_procedure(self, procedure_id: int) -> Any:
+        return self.get(f"/procedure/{procedure_id}")
+
+    def get_procedure_controls(self, procedure_id: int) -> Any:
+        return self.get(f"/procedure/{procedure_id}/controls")
+
+    def get_procedure_requirements(self, procedure_id: int) -> Any:
+        return self.get(f"/procedure/{procedure_id}/requirements")
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         normalized_path = path.lstrip("/")

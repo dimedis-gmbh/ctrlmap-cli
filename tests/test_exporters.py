@@ -15,16 +15,6 @@ from ctrlmap_cli.exporters.risks import RisksExporter
 from ctrlmap_cli.models.config import AppConfig
 
 
-def _raw_procedure_doc(doc_id: int, code: str, name: str = "Title") -> dict:
-    return {
-        "id": doc_id,
-        "procedureCode": code,
-        "name": f" {name} ",
-        "description": "body text",
-        "status": {"name": "Approved"},
-    }
-
-
 def _raw_risk_doc(doc_id: int, code: str, name: str = "Risk") -> dict:
     return {
         "id": doc_id,
@@ -173,59 +163,121 @@ class TestBaseExporterOverwrite:
 
 
 class TestPoliciesExporter:
+    """Basic smoke tests; see test_policies.py for comprehensive coverage."""
+
+    @staticmethod
+    def _setup_client(list_items: list, details: dict) -> MagicMock:
+        client = MagicMock()
+        client.list_policies.return_value = list_items
+        client.get_policy.side_effect = lambda policy_id: details.get(policy_id, {})
+        return client
+
+    @staticmethod
+    def _make_detail(doc_id: int = 1, code: str = "POL-1") -> dict:
+        from urllib.parse import quote
+        return {
+            "id": doc_id,
+            "policyCode": code,
+            "name": " Title ",
+            "status": {"name": "Approved"},
+            "majorVersion": 1,
+            "minorVersion": 0,
+            "owner": {"fullname": "Owner"},
+            "approver": {"fullname": "Approver"},
+            "policyContributors": [],
+            "dataClassification": "",
+            "reviewDate": None,
+            "updatedate": None,
+            "sections": [{
+                "id": 1,
+                "title": "Section",
+                "description": quote(quote("<p>Body.</p>", safe=""), safe=""),
+            }],
+        }
+
     def test_export_calls_expected_endpoint_and_rule(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.get.return_value = []
+        client = self._setup_client(list_items=[], details={})
 
-        exporter = PoliciesExporter(client, tmp_path / "policies")
-        exporter.export()
+        PoliciesExporter(client, tmp_path / "pols").export()
 
-        call_args = client.get.call_args
-        assert call_args[0][0] == "/procedures"
-        assert call_args[1]["params"]["type"] == "policy"
+        client.list_policies.assert_called_once_with()
 
-    def test_export_writes_md_and_yaml_by_default(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.get.return_value = [_raw_procedure_doc(1, "POL-1")]
+    def test_export_writes_md_only_by_default(self, tmp_path: Path) -> None:
+        detail = self._make_detail(1, "POL-1")
+        client = self._setup_client([{"id": 1}], {1: detail})
 
-        PoliciesExporter(client, tmp_path / "policies").export()
+        PoliciesExporter(client, tmp_path / "pols").export()
 
-        assert (tmp_path / "policies" / "POL-1.md").exists()
-        assert not (tmp_path / "policies" / "POL-1.json").exists()
-        assert (tmp_path / "policies" / "POL-1.yaml").exists()
+        assert (tmp_path / "pols" / "POL-1.md").exists()
+        assert not (tmp_path / "pols" / "POL-1.json").exists()
 
     def test_export_writes_json_with_keep_raw_json(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.get.return_value = [_raw_procedure_doc(1, "POL-1")]
+        detail = self._make_detail(1, "POL-1")
+        client = self._setup_client([{"id": 1}], {1: detail})
 
-        PoliciesExporter(client, tmp_path / "policies", keep_raw_json=True).export()
+        PoliciesExporter(client, tmp_path / "pols", keep_raw_json=True).export()
 
-        assert (tmp_path / "policies" / "POL-1.md").exists()
-        assert (tmp_path / "policies" / "POL-1.json").exists()
-        assert (tmp_path / "policies" / "POL-1.yaml").exists()
+        assert (tmp_path / "pols" / "POL-1.md").exists()
+        assert (tmp_path / "pols" / "POL-1.json").exists()
 
 
 class TestProceduresExporter:
-    def test_export_calls_expected_endpoint_and_rule(self, tmp_path: Path) -> None:
+    """Basic smoke tests; see test_procedures.py for comprehensive coverage."""
+
+    @staticmethod
+    def _setup_client(list_items: list, details: dict) -> MagicMock:
         client = MagicMock()
-        client.get.return_value = []
+        client.list_procedures.return_value = list_items
+        client.get_procedure.side_effect = lambda pid: details.get(pid, {})
+        client.get_procedure_controls.return_value = []
+        client.get_procedure_requirements.return_value = []
+        return client
 
-        exporter = ProceduresExporter(client, tmp_path / "procedures")
-        exporter.export()
+    @staticmethod
+    def _make_detail(doc_id: int = 1, code: str = "PRO-1") -> dict:
+        from urllib.parse import quote
+        return {
+            "id": doc_id,
+            "procedureCode": code,
+            "name": " Title ",
+            "status": {"name": "Approved"},
+            "majorVersion": 1,
+            "minorVersion": 0,
+            "owner": {"fullname": "Owner"},
+            "approver": {"fullname": "Approver"},
+            "procedureContributors": [],
+            "dataClassification": "",
+            "frequency": {"name": "Annual"},
+            "reviewDate": None,
+            "updatedate": None,
+            "description": quote(quote("<p>Body.</p>", safe=""), safe=""),
+        }
 
-        call_args = client.get.call_args
-        assert call_args[0][0] == "/procedures"
-        assert call_args[1]["params"]["type"] == "procedure"
+    def test_export_calls_expected_endpoint(self, tmp_path: Path) -> None:
+        client = self._setup_client(list_items=[], details={})
 
-    def test_export_writes_md_and_yaml_by_default(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.get.return_value = [_raw_procedure_doc(1, "PRO-1")]
+        ProceduresExporter(client, tmp_path / "pros").export()
 
-        ProceduresExporter(client, tmp_path / "procedures").export()
+        client.list_procedures.assert_called_once_with()
 
-        assert (tmp_path / "procedures" / "PRO-1.md").exists()
-        assert not (tmp_path / "procedures" / "PRO-1.json").exists()
-        assert (tmp_path / "procedures" / "PRO-1.yaml").exists()
+    def test_export_writes_md_only_by_default(self, tmp_path: Path) -> None:
+        detail = self._make_detail(1, "PRO-1")
+        client = self._setup_client([{"id": 1}], {1: detail})
+
+        ProceduresExporter(client, tmp_path / "pros").export()
+
+        assert (tmp_path / "pros" / "PRO-1.md").exists()
+        assert not (tmp_path / "pros" / "PRO-1.json").exists()
+        assert not list((tmp_path / "pros").glob("*.yaml"))
+
+    def test_export_writes_json_with_keep_raw_json(self, tmp_path: Path) -> None:
+        detail = self._make_detail(1, "PRO-1")
+        client = self._setup_client([{"id": 1}], {1: detail})
+
+        ProceduresExporter(client, tmp_path / "pros", keep_raw_json=True).export()
+
+        assert (tmp_path / "pros" / "PRO-1.md").exists()
+        assert (tmp_path / "pros" / "PRO-1.json").exists()
 
 
 class TestRisksExporter:
@@ -261,8 +313,6 @@ class TestExporterProgress:
     @pytest.mark.parametrize(
         "exporter_cls, method_name, payload, text",
         [
-            (PoliciesExporter, "get", [_raw_procedure_doc(1, "POL-1")], "Exporting policies"),
-            (ProceduresExporter, "get", [_raw_procedure_doc(1, "PRO-1")], "Exporting procedures"),
             (RisksExporter, "get", [_raw_risk_doc(1, "RISK-1")], "Exporting risks"),
         ],
     )
@@ -347,8 +397,8 @@ class TestCliExportWiring:
 
         kwargs = {"force": False, "keep_raw_json": False}
         gov_cls.assert_called_once_with(client, tmp_path / "govs", **kwargs)
-        pol_cls.assert_called_once_with(client, tmp_path / "policies", **kwargs)
-        pro_cls.assert_called_once_with(client, tmp_path / "procedures", **kwargs)
+        pol_cls.assert_called_once_with(client, tmp_path / "pols", **kwargs)
+        pro_cls.assert_called_once_with(client, tmp_path / "pros", **kwargs)
         risk_cls.assert_called_once_with(client, tmp_path / "risks", **kwargs)
 
         gov_instance.export.assert_called_once()
@@ -375,3 +425,26 @@ class TestCliExportWiring:
         gov_cls.assert_called_once_with(
             client, tmp_path / "govs", force=True, keep_raw_json=True,
         )
+
+    def test_copy_pro_alias_uses_pros_output_dir(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        client = self._setup_cli(monkeypatch, tmp_path)
+        pro_instance = MagicMock()
+        pro_cls = MagicMock(return_value=pro_instance)
+
+        monkeypatch.setattr("ctrlmap_cli.cli.GovernanceExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.PoliciesExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", pro_cls)
+        monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", MagicMock())
+
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-pro"]):
+            from ctrlmap_cli.cli import main
+            main()
+
+        pro_cls.assert_called_once_with(
+            client, tmp_path / "pros", force=False, keep_raw_json=False,
+        )
+        pro_instance.export.assert_called_once()

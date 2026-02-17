@@ -225,6 +225,57 @@ def _wrap_markdown(md: str) -> str:
     return "\n".join(wrapped)
 
 
+_HEADING_RE = re.compile(r"^(#{1,6})\s")
+
+
+def shift_headings(md: str, delta: int) -> str:
+    """Shift all markdown heading levels by *delta*.
+
+    Positive *delta* increases depth (h2 -> h3), negative decreases (h3 -> h2).
+    Levels are clamped to the 1-6 range.
+    """
+    if delta == 0:
+        return md
+
+    def _shift(m: re.Match) -> str:  # type: ignore[type-arg]
+        hashes = m.group(1)
+        new_level = max(1, min(6, len(hashes) + delta))
+        return "#" * new_level + " "
+
+    lines = md.splitlines()
+    result: list[str] = []
+    in_code_fence = False
+    for line in lines:
+        if line.lstrip().startswith("```"):
+            in_code_fence = not in_code_fence
+        if not in_code_fence:
+            line = _HEADING_RE.sub(_shift, line)
+        result.append(line)
+    return "\n".join(result)
+
+
+def normalize_headings(md: str, target_min: int = 2) -> str:
+    """Shift all headings so the highest level becomes *target_min*.
+
+    If the text has h3 and h4 and *target_min* is 2, h3 becomes h2 and
+    h4 becomes h3.  Text without headings is returned unchanged.
+    """
+    min_level = 7
+    in_code_fence = False
+    for line in md.splitlines():
+        if line.lstrip().startswith("```"):
+            in_code_fence = not in_code_fence
+            continue
+        if in_code_fence:
+            continue
+        m = _HEADING_RE.match(line)
+        if m:
+            min_level = min(min_level, len(m.group(1)))
+    if min_level > 6:
+        return md  # no headings found
+    return shift_headings(md, target_min - min_level)
+
+
 def _should_preserve_line(line: str) -> bool:
     stripped = line.lstrip()
     if stripped.startswith(("#", ">", "```")):

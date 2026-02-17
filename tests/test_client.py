@@ -81,6 +81,94 @@ class TestPost:
         assert result == [{"id": 1}]
 
 
+class TestPolicyHelpers:
+    def test_list_policies_endpoint(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, [{"id": 4}])
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.list_policies()
+
+        expected_body = {
+            "startpos": 0,
+            "pagesize": 1000,
+            "sortby": None,
+            "rules": [{"field": "type", "operator": "=", "value": "policy"}],
+        }
+        mock_req.assert_called_once_with(
+            "POST", "https://api.eu.ctrlmap.com/policies", json=expected_body,
+        )
+        assert result == [{"id": 4}]
+
+    def test_get_policy_detail(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, {"id": 4, "policyCode": "POL-4"})
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_policy(4)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/policy/4", params=None,
+        )
+        assert result["policyCode"] == "POL-4"
+
+
+class TestProcedureHelpers:
+    def test_list_procedures_endpoint(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, [{"id": 28}])
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.list_procedures()
+
+        expected_body = {
+            "startpos": 0,
+            "pagesize": 500,
+            "sortby": None,
+            "rules": [{"field": "type", "operator": "=", "value": "procedure"}],
+        }
+        mock_req.assert_called_once_with(
+            "POST", "https://api.eu.ctrlmap.com/procedures", json=expected_body,
+        )
+        assert result == [{"id": 28}]
+
+    def test_get_procedure_detail(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, {"id": 28, "procedureCode": "PRO-3"})
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_procedure(28)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/procedure/28", params=None,
+        )
+        assert result["procedureCode"] == "PRO-3"
+
+    def test_get_procedure_controls(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, [{"controlCode": "A.5.1"}])
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_procedure_controls(28)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/procedure/28/controls", params=None,
+        )
+        assert result == [{"controlCode": "A.5.1"}]
+
+    def test_get_procedure_requirements(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, [{"requirementCode": "ISO-1"}])
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_procedure_requirements(28)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/procedure/28/requirements", params=None,
+        )
+        assert result == [{"requirementCode": "ISO-1"}]
+
+
 class TestErrorHandling:
     def test_401_raises_authentication_error(self) -> None:
         client = _make_client()

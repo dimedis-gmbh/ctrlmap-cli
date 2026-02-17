@@ -15,7 +15,7 @@ from ctrlmap_cli.exporters.procedures import ProceduresExporter
 from ctrlmap_cli.exporters.risks import RisksExporter
 from ctrlmap_cli.models.config import AppConfig
 
-_SUBDIRS = ("govs", "policies", "procedures", "risks")
+_SUBDIRS = ("govs", "pols", "pros", "risks")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -31,8 +31,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     group.add_argument("--copy-all", action="store_true", help="Export all data.")
     group.add_argument("--copy-gov", action="store_true", help="Export governance documents.")
-    group.add_argument("--copy-pols", action="store_true", help="Export policies.")
-    group.add_argument("--copy-pros", action="store_true", help="Export procedures.")
+    group.add_argument(
+        "--copy-pols", "--copy-pol", dest="copy_pols", action="store_true", help="Export policies.",
+    )
+    group.add_argument(
+        "--copy-pros", "--copy-pro", dest="copy_pros", action="store_true", help="Export procedures.",
+    )
     group.add_argument("--copy-risks", action="store_true", help="Export risk register.")
     parser.add_argument(
         "--force", action="store_true",
@@ -90,9 +94,9 @@ def _run_export(args: argparse.Namespace) -> None:
     if args.copy_all or args.copy_gov:
         exporters.append(GovernanceExporter(client, cwd / "govs", **export_kwargs))
     if args.copy_all or args.copy_pols:
-        exporters.append(PoliciesExporter(client, cwd / "policies", **export_kwargs))
+        exporters.append(PoliciesExporter(client, cwd / "pols", **export_kwargs))
     if args.copy_all or args.copy_pros:
-        exporters.append(ProceduresExporter(client, cwd / "procedures", **export_kwargs))
+        exporters.append(ProceduresExporter(client, cwd / "pros", **export_kwargs))
     if args.copy_all or args.copy_risks:
         exporters.append(RisksExporter(client, cwd / "risks", **export_kwargs))
 

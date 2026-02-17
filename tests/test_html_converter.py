@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from ctrlmap_cli.html_converter import decode_description, html_to_markdown
+from ctrlmap_cli.html_converter import (
+    decode_description,
+    html_to_markdown,
+    normalize_headings,
+    shift_headings,
+)
 
 
 class TestDecodeDescription:
@@ -311,3 +316,65 @@ class TestTableFormat:
         )
         result = html_to_markdown(html)
         assert "|" not in result
+
+
+class TestShiftHeadings:
+    def test_shift_down(self) -> None:
+        assert shift_headings("## Heading", 1) == "### Heading"
+
+    def test_shift_up(self) -> None:
+        assert shift_headings("### Heading", -1) == "## Heading"
+
+    def test_clamped_at_h1(self) -> None:
+        assert shift_headings("# Heading", -1) == "# Heading"
+
+    def test_clamped_at_h6(self) -> None:
+        assert shift_headings("###### Heading", 1) == "###### Heading"
+
+    def test_zero_delta_unchanged(self) -> None:
+        md = "## Title\n\nParagraph.\n\n### Sub"
+        assert shift_headings(md, 0) == md
+
+    def test_multiple_headings(self) -> None:
+        md = "## A\n\nText\n\n### B\n\n#### C"
+        result = shift_headings(md, 1)
+        assert "### A" in result
+        assert "#### B" in result
+        assert "##### C" in result
+
+    def test_code_fence_not_affected(self) -> None:
+        md = "```\n## not a heading\n```"
+        assert shift_headings(md, 1) == md
+
+    def test_non_heading_hash_not_affected(self) -> None:
+        md = "Use #channel for updates."
+        assert shift_headings(md, 1) == md
+
+
+class TestNormalizeHeadings:
+    def test_h3_h4_to_h2_h3(self) -> None:
+        md = "### Top\n\n#### Sub"
+        result = normalize_headings(md, target_min=2)
+        assert "## Top" in result
+        assert "### Sub" in result
+
+    def test_already_correct(self) -> None:
+        md = "## Top\n\n### Sub"
+        result = normalize_headings(md, target_min=2)
+        assert result == md
+
+    def test_no_headings_unchanged(self) -> None:
+        md = "Just plain text.\n\nAnother paragraph."
+        assert normalize_headings(md, target_min=2) == md
+
+    def test_target_min_3(self) -> None:
+        md = "# Deep\n\n## Deeper"
+        result = normalize_headings(md, target_min=3)
+        assert "### Deep" in result
+        assert "#### Deeper" in result
+
+    def test_code_fence_headings_ignored(self) -> None:
+        md = "```\n# code comment\n```\n\n### Real heading"
+        result = normalize_headings(md, target_min=2)
+        assert "## Real heading" in result
+        assert "```\n# code comment\n```" in result
