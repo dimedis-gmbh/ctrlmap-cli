@@ -36,9 +36,9 @@ human-readable data formats (Markdown and JSON). You can export
 
 `ctrlmap-cli` is written in Python and distributed as a single-file zip-app. Python 3.9 or newer is required.
 
-- Download a release to anywhere you like e.g. `/usr/local/bin`.
+- [Download a release](https://github.com/dimedis-gmbh/ctrlmap-cli/releases) to anywhere you like e.g. `/usr/local/bin`.
 - Open ControlMap in your browser with Dev-Tools open. Open the network tab of the dev tools and click on "Policies".
-  Grab your API base URL and your bearer token.
+  Grab your API base URL and your bearer token. [See screenshot](assets/get-bearer-token.png).
 - Go to an empty folder and make it the folder where ControlMap documents are mirrored to.
   Your API URL of ControlMap is required. E.g. `https://api.eu.ctrlmap.com`
   ```bash

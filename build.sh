@@ -12,8 +12,15 @@ rm -rf "${SCRIPT_DIR}/build" "${BUILD_DIR}" "${DIST_DIR}"
 echo "Creating build directory..."
 mkdir -p "${BUILD_DIR}" "${DIST_DIR}"
 
+VERSION="${VERSION:-0.0.0-src}"
+
 echo "Copying source code..."
 cp -r "${SCRIPT_DIR}/ctrlmap_cli" "${BUILD_DIR}/ctrlmap_cli"
+
+echo "Baking version: ${VERSION}"
+INIT_PY="${BUILD_DIR}/ctrlmap_cli/__init__.py"
+sed "s/0.0.0-src/${VERSION}/" "${INIT_PY}" > "${INIT_PY}.tmp"
+mv "${INIT_PY}.tmp" "${INIT_PY}"
 
 echo "Installing dependencies..."
 "${PYTHON}" -m pip install \

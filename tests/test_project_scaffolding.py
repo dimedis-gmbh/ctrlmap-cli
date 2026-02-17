@@ -15,7 +15,7 @@ from ctrlmap_cli.exceptions import CtrlMapError
 
 
 def test_version_is_defined() -> None:
-    assert __version__ == "0.1.0"
+    assert __version__ == "0.0.0-src"
 
 
 def test_cli_main_no_args_prints_help(capsys: pytest.CaptureFixture[str]) -> None:

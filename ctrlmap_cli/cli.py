@@ -5,6 +5,7 @@ import getpass
 from pathlib import Path
 from typing import List
 
+from ctrlmap_cli import __version__
 from ctrlmap_cli.client import CtrlMapClient
 from ctrlmap_cli.config import read_config, write_config
 from ctrlmap_cli.exceptions import ConfigError
@@ -22,6 +23,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ctrlmap-cli",
         description="Unofficial command-line client for ControlMap data export.",
+    )
+    parser.add_argument(
+        "--version", action="version",
+        version=f"%(prog)s {__version__}",
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(

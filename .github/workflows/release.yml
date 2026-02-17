@@ -36,6 +36,8 @@ jobs:
 
       - name: Build zipapp
         run: bash build.sh
+        env:
+          VERSION: ${{ github.ref_name }}
 
       - name: Create release
         uses: softprops/action-gh-release@v2
