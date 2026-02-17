@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any
 
 from ctrlmap_cli.client import CtrlMapClient
 from ctrlmap_cli.formatters.json_formatter import JsonFormatter
-from ctrlmap_cli.formatters.markdown_formatter import MarkdownFormatter
-from ctrlmap_cli.formatters.yaml_formatter import YamlFormatter
 
 
 class BaseExporter(ABC):
@@ -25,9 +21,7 @@ class BaseExporter(ABC):
         self.force = force
         self.keep_raw_json = keep_raw_json
         self._overwrite_all = False
-        self._md_formatter = MarkdownFormatter()
         self._json_formatter = JsonFormatter()
-        self._yaml_formatter = YamlFormatter()
 
     @abstractmethod
     def export(self) -> None:
@@ -57,20 +51,3 @@ class BaseExporter(ABC):
             if answer in ("a", "all"):
                 self._overwrite_all = True
                 return True
-
-    def _write_document(self, name: str, data: Any) -> None:
-        """Write data in Markdown, JSON, and YAML formats."""
-        raw = asdict(data) if is_dataclass(data) and not isinstance(data, type) else data
-
-        md_path = self.output_dir / (name + ".md")
-        if self._should_write(md_path):
-            self._md_formatter.write(raw, md_path)
-
-        if self.keep_raw_json:
-            json_path = self.output_dir / (name + ".json")
-            if self._should_write(json_path):
-                self._json_formatter.write(raw, json_path)
-
-        yaml_path = self.output_dir / (name + ".yaml")
-        if self._should_write(yaml_path):
-            self._yaml_formatter.write(raw, yaml_path)

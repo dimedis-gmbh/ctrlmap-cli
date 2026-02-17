@@ -37,7 +37,9 @@ def _build_parser() -> argparse.ArgumentParser:
     group.add_argument(
         "--copy-pros", "--copy-pro", dest="copy_pros", action="store_true", help="Export procedures.",
     )
-    group.add_argument("--copy-risks", action="store_true", help="Export risk register.")
+    group.add_argument(
+        "--copy-risks", "--copy-risk", dest="copy_risks", action="store_true", help="Export risk register.",
+    )
     parser.add_argument(
         "--force", action="store_true",
         help="Overwrite existing files without confirmation.",

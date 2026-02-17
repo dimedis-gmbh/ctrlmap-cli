@@ -4,11 +4,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-import yaml
-
 from ctrlmap_cli.formatters.json_formatter import JsonFormatter
 from ctrlmap_cli.formatters.markdown_formatter import MarkdownFormatter
-from ctrlmap_cli.formatters.yaml_formatter import YamlFormatter
 
 
 class TestJsonFormatter:
@@ -37,36 +34,6 @@ class TestJsonFormatter:
         path = tmp_path / "out.json"
         JsonFormatter().write({}, path)
         assert path.read_text(encoding="utf-8").endswith("\n")
-
-
-class TestYamlFormatter:
-    def test_file_extension(self) -> None:
-        assert YamlFormatter().file_extension() == ".yaml"
-
-    def test_write_and_parse_back(self, tmp_path: Path) -> None:
-        data = {"id": 1, "name": "Test", "items": ["x", "y"]}
-        path = tmp_path / "out.yaml"
-        YamlFormatter().write(data, path)
-
-        content = path.read_text(encoding="utf-8")
-        parsed = yaml.safe_load(content)
-        assert parsed == data
-
-    def test_unicode_preserved(self, tmp_path: Path) -> None:
-        data = {"title": "Prüfbericht"}
-        path = tmp_path / "out.yaml"
-        YamlFormatter().write(data, path)
-
-        content = path.read_text(encoding="utf-8")
-        assert "Prüfbericht" in content
-
-    def test_block_style(self, tmp_path: Path) -> None:
-        data = {"items": ["a", "b"]}
-        path = tmp_path / "out.yaml"
-        YamlFormatter().write(data, path)
-
-        content = path.read_text(encoding="utf-8")
-        assert "- a" in content  # block style, not flow [a, b]
 
 
 class TestMarkdownFormatter:

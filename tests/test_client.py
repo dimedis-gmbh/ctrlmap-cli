@@ -169,6 +169,50 @@ class TestProcedureHelpers:
         assert result == [{"requirementCode": "ISO-1"}]
 
 
+class TestRiskHelpers:
+    def test_list_risks_endpoint(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, {"riskDTOS": [{"id": 32}]})
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.list_risks()
+
+        expected_body = {
+            "startpos": 0,
+            "pagesize": 500,
+            "rules": [],
+        }
+        mock_req.assert_called_once_with(
+            "POST", "https://api.eu.ctrlmap.com/risks", json=expected_body,
+        )
+        assert result == {"riskDTOS": [{"id": 32}]}
+
+    def test_get_risk_detail(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, {"id": 32, "riskid": "RSK-1"})
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_risk(32)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/risks/32", params=None,
+        )
+        assert result["riskid"] == "RSK-1"
+
+    def test_get_risk_areas(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, [{"id": 1, "title": "Health & Safety"}])
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_risk_areas(32)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/riskarea",
+            params={"riskId": "32"},
+        )
+        assert result == [{"id": 1, "title": "Health & Safety"}]
+
+
 class TestErrorHandling:
     def test_401_raises_authentication_error(self) -> None:
         client = _make_client()

@@ -64,6 +64,21 @@ class CtrlMapClient:
     def get_procedure_requirements(self, procedure_id: int) -> Any:
         return self.get(f"/procedure/{procedure_id}/requirements")
 
+    _RISKS_LIST_BODY: Dict[str, Any] = {
+        "startpos": 0,
+        "pagesize": 500,
+        "rules": [],
+    }
+
+    def list_risks(self) -> Any:
+        return self.post("/risks", json=self._RISKS_LIST_BODY)
+
+    def get_risk(self, risk_id: int) -> Any:
+        return self.get(f"/risks/{risk_id}")
+
+    def get_risk_areas(self, risk_id: int) -> Any:
+        return self.get("/riskarea", params={"riskId": str(risk_id)})
+
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         normalized_path = path.lstrip("/")
         url = self._base_url + normalized_path

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import yaml
 
 from ctrlmap_cli.exporters.base import BaseExporter
 from ctrlmap_cli.exporters.policies import PoliciesExporter
@@ -15,14 +12,24 @@ from ctrlmap_cli.exporters.risks import RisksExporter
 from ctrlmap_cli.models.config import AppConfig
 
 
-def _raw_risk_doc(doc_id: int, code: str, name: str = "Risk") -> dict:
+def _make_risk_detail(doc_id: int = 32, code: str = "RSK-1", name: str = "Risk") -> dict:
     return {
         "id": doc_id,
-        "riskCode": code,
+        "riskid": code,
         "name": f" {name} ",
         "description": "risk body",
+        "state": "red",
         "status": {"name": "Open"},
-        "severity": {"name": "High"},
+        "userDTO": {"fullname": "Owner"},
+        "systemLabels": [],
+        "scoreDetailMap": {},
+        "businessImpact": "",
+        "existingControls": "",
+        "residualTreatmentPlan": "",
+        "controls": [],
+        "actionItems": [],
+        "threats": [],
+        "vulnerabilities": [],
     }
 
 
@@ -48,55 +55,6 @@ class TestBaseExporter:
         exporter = Concrete(MagicMock(), tmp_path)
         exporter._log("hello world")
         assert "hello world" in capsys.readouterr().out
-
-    def test_write_document_creates_md_and_yaml_by_default(self, tmp_path: Path) -> None:
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
-        exporter = Concrete(MagicMock(), tmp_path)
-        exporter._ensure_output_dir()
-        data = {"title": "Test Doc", "body": "Content here.", "status": "active"}
-        exporter._write_document("test-doc", data)
-
-        assert (tmp_path / "test-doc.md").exists()
-        assert not (tmp_path / "test-doc.json").exists()
-        assert (tmp_path / "test-doc.yaml").exists()
-
-    def test_write_document_creates_json_with_keep_raw_json(self, tmp_path: Path) -> None:
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
-        exporter = Concrete(MagicMock(), tmp_path, keep_raw_json=True)
-        exporter._ensure_output_dir()
-        data = {"title": "Test Doc", "body": "Content here.", "status": "active"}
-        exporter._write_document("test-doc", data)
-
-        assert (tmp_path / "test-doc.md").exists()
-        assert (tmp_path / "test-doc.json").exists()
-        assert (tmp_path / "test-doc.yaml").exists()
-
-    def test_write_document_with_dataclass(self, tmp_path: Path) -> None:
-        @dataclass
-        class SampleDoc:
-            title: str
-            body: str
-            version: int
-
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
-        exporter = Concrete(MagicMock(), tmp_path, keep_raw_json=True)
-        exporter._ensure_output_dir()
-        exporter._write_document("sample", SampleDoc(title="DC Title", body="DC body.", version=2))
-
-        parsed_json = json.loads((tmp_path / "sample.json").read_text())
-        assert parsed_json["version"] == 2
-
-        parsed_yaml = yaml.safe_load((tmp_path / "sample.yaml").read_text())
-        assert parsed_yaml["title"] == "DC Title"
 
 
 class TestBaseExporterOverwrite:
@@ -281,58 +239,60 @@ class TestProceduresExporter:
 
 
 class TestRisksExporter:
+    """Basic smoke tests; see test_risks.py for comprehensive coverage."""
+
+    @staticmethod
+    def _setup_client(list_items: list, details: dict) -> MagicMock:
+        client = MagicMock()
+        client.list_risks.return_value = {"riskDTOS": list_items}
+        client.get_risk.side_effect = lambda rid: details.get(rid, {})
+        client.get_risk_areas.return_value = []
+        return client
+
     def test_export_calls_expected_endpoint(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.get.return_value = []
-
-        exporter = RisksExporter(client, tmp_path / "risks")
-        exporter.export()
-
-        client.get.assert_called_once_with("/risks")
-
-    def test_export_writes_md_and_yaml_by_default(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.get.return_value = [_raw_risk_doc(1, "RISK-1")]
+        client = self._setup_client(list_items=[], details={})
 
         RisksExporter(client, tmp_path / "risks").export()
 
-        assert (tmp_path / "risks" / "RISK-1.md").exists()
-        assert not (tmp_path / "risks" / "RISK-1.json").exists()
-        assert (tmp_path / "risks" / "RISK-1.yaml").exists()
+        client.list_risks.assert_called_once()
+
+    def test_export_writes_md_only_by_default(self, tmp_path: Path) -> None:
+        detail = _make_risk_detail(32, "RSK-1")
+        client = self._setup_client([{"id": 32}], {32: detail})
+
+        RisksExporter(client, tmp_path / "risks").export()
+
+        assert (tmp_path / "risks" / "RSK-1.md").exists()
+        assert not (tmp_path / "risks" / "RSK-1.json").exists()
+        assert not list((tmp_path / "risks").glob("*.yaml"))
 
     def test_export_writes_json_with_keep_raw_json(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.get.return_value = [_raw_risk_doc(1, "RISK-1")]
+        detail = _make_risk_detail(32, "RSK-1")
+        client = self._setup_client([{"id": 32}], {32: detail})
 
         RisksExporter(client, tmp_path / "risks", keep_raw_json=True).export()
 
-        assert (tmp_path / "risks" / "RISK-1.json").exists()
+        assert (tmp_path / "risks" / "RSK-1.md").exists()
+        assert (tmp_path / "risks" / "RSK-1.json").exists()
 
 
 class TestExporterProgress:
-    @pytest.mark.parametrize(
-        "exporter_cls, method_name, payload, text",
-        [
-            (RisksExporter, "get", [_raw_risk_doc(1, "RISK-1")], "Exporting risks"),
-        ],
-    )
-    def test_progress_log_contains_done_count(
+    def test_risks_progress_log(
         self,
-        exporter_cls: type,
-        method_name: str,
-        payload: list,
-        text: str,
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
+        detail = _make_risk_detail(32, "RSK-1")
         client = MagicMock()
-        getattr(client, method_name).return_value = payload
+        client.list_risks.return_value = {"riskDTOS": [{"id": 32}]}
+        client.get_risk.return_value = detail
+        client.get_risk_areas.return_value = []
 
-        exporter = exporter_cls(client, tmp_path / "out")
+        exporter = RisksExporter(client, tmp_path / "out")
         exporter.export()
 
         out = capsys.readouterr().out
-        assert text in out
+        assert "Exporting risks" in out
         assert "done (1 documents)" in out
 
 
@@ -448,3 +408,26 @@ class TestCliExportWiring:
             client, tmp_path / "pros", force=False, keep_raw_json=False,
         )
         pro_instance.export.assert_called_once()
+
+    def test_copy_risk_alias_uses_risks_output_dir(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        client = self._setup_cli(monkeypatch, tmp_path)
+        risk_instance = MagicMock()
+        risk_cls = MagicMock(return_value=risk_instance)
+
+        monkeypatch.setattr("ctrlmap_cli.cli.GovernanceExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.PoliciesExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", risk_cls)
+
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-risk"]):
+            from ctrlmap_cli.cli import main
+            main()
+
+        risk_cls.assert_called_once_with(
+            client, tmp_path / "risks", force=False, keep_raw_json=False,
+        )
+        risk_instance.export.assert_called_once()
