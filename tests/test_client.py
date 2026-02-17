@@ -284,3 +284,127 @@ class TestErrorHandling:
     def test_error_types_are_ctrlmap_errors(self) -> None:
         assert issubclass(ApiError, CtrlMapError)
         assert issubclass(AuthenticationError, ApiError)
+
+
+class TestVendorHelpers:
+    def test_list_vendors_endpoint(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, [{"id": 41}])
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.list_vendors()
+
+        expected_body = {
+            "startpos": 0,
+            "pagesize": 500,
+            "rules": [],
+        }
+        mock_req.assert_called_once_with(
+            "POST", "https://api.eu.ctrlmap.com/vendors", json=expected_body,
+        )
+        assert result == [{"id": 41}]
+
+    def test_get_vendor_detail(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, {"id": 41, "code": "VND-17"})
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_vendor(41)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/vendor/41", params=None,
+        )
+        assert result["code"] == "VND-17"
+
+    def test_get_vendor_risks(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, [{"id": 33}])
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_vendor_risks(41)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/vendor/risks",
+            params={"vendorId": "41"},
+        )
+        assert result == [{"id": 33}]
+
+    def test_get_vendor_hyperlinks(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, [{"id": 56}])
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_vendor_hyperlinks(41)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/vendor/hyperlinks",
+            params={"vendorId": "41"},
+        )
+        assert result == [{"id": 56}]
+
+    def test_get_vendor_contacts(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, [{"id": 1}])
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_vendor_contacts(41)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/vendor/contacts",
+            params={"vendorId": "41"},
+        )
+        assert result == [{"id": 1}]
+
+    def test_get_vendor_quick_assessment(self) -> None:
+        client = _make_client()
+        mock_resp = _mock_response(200, {"totalQuestions": 10})
+
+        with patch.object(client._session, "request", return_value=mock_resp) as mock_req:
+            result = client.get_vendor_quick_assessment(42, 42)
+
+        mock_req.assert_called_once_with(
+            "GET", "https://api.eu.ctrlmap.com/vendor/question/checklist",
+            params={"vendorAssessmentId": "42", "assessmentLinkId": "42"},
+        )
+        assert result == {"totalQuestions": 10}
+
+
+class TestDownloadFile:
+    def test_download_success(self) -> None:
+        client = _make_client()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b"PDF content"
+
+        with patch("ctrlmap_cli.client.requests.get", return_value=mock_resp) as mock_get:
+            result = client.download_file("https://s3.example.com/file.pdf")
+
+        mock_get.assert_called_once_with("https://s3.example.com/file.pdf", timeout=120)
+        assert result == b"PDF content"
+
+    def test_download_connection_error(self) -> None:
+        client = _make_client()
+        with patch(
+            "ctrlmap_cli.client.requests.get",
+            side_effect=requests.ConnectionError("refused"),
+        ):
+            with pytest.raises(ApiError, match="Cannot download file"):
+                client.download_file("https://s3.example.com/file.pdf")
+
+    def test_download_request_exception(self) -> None:
+        client = _make_client()
+        with patch(
+            "ctrlmap_cli.client.requests.get",
+            side_effect=requests.RequestException("timeout"),
+        ):
+            with pytest.raises(ApiError, match="Failed to download file"):
+                client.download_file("https://s3.example.com/file.pdf")
+
+    def test_download_http_error(self) -> None:
+        client = _make_client()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 403
+
+        with patch("ctrlmap_cli.client.requests.get", return_value=mock_resp):
+            with pytest.raises(ApiError, match="Failed to download file \\(403\\)"):
+                client.download_file("https://s3.example.com/file.pdf")

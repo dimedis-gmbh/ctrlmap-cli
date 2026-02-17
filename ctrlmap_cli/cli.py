@@ -14,9 +14,10 @@ from ctrlmap_cli.exporters.governance import GovernanceExporter
 from ctrlmap_cli.exporters.policies import PoliciesExporter
 from ctrlmap_cli.exporters.procedures import ProceduresExporter
 from ctrlmap_cli.exporters.risks import RisksExporter
+from ctrlmap_cli.exporters.vendors import VendorsExporter
 from ctrlmap_cli.models.config import AppConfig
 
-_SUBDIRS = ("govs", "pols", "pros", "risks")
+_SUBDIRS = ("govs", "pols", "pros", "risks", "vendors")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -44,6 +45,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     group.add_argument(
         "--copy-risks", "--copy-risk", dest="copy_risks", action="store_true", help="Export risk register.",
+    )
+    group.add_argument(
+        "--copy-vendors", "--copy-vendor", dest="copy_vendors", action="store_true", help="Export vendor data.",
     )
     parser.add_argument(
         "--force", action="store_true",
@@ -106,6 +110,8 @@ def _run_export(args: argparse.Namespace) -> None:
         exporters.append(ProceduresExporter(client, cwd / "pros", **export_kwargs))
     if args.copy_all or args.copy_risks:
         exporters.append(RisksExporter(client, cwd / "risks", **export_kwargs))
+    if args.copy_all or args.copy_vendors:
+        exporters.append(VendorsExporter(client, cwd / "vendors", **export_kwargs))
 
     for exporter in exporters:
         exporter.export()
@@ -117,7 +123,7 @@ def main() -> None:
 
     if args.init:
         _run_init(args.init)
-    elif args.copy_all or args.copy_gov or args.copy_pols or args.copy_pros or args.copy_risks:
+    elif args.copy_all or args.copy_gov or args.copy_pols or args.copy_pros or args.copy_risks or args.copy_vendors:
         _run_export(args)
     else:
         parser.print_help()

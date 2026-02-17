@@ -31,6 +31,7 @@ human-readable data formats (Markdown and JSON). You can export
 - Policies
 - Procedures
 - Risk Register
+- Vendor Register (including document downloads, quick assessments, risks & action items)
 
 ## Usage
 
@@ -52,7 +53,8 @@ human-readable data formats (Markdown and JSON). You can export
   ├── govs/
   ├── pols/
   ├── pros/
-  └── risks/
+  ├── risks/
+  └── vendors/
   ```
 - Now you can copy all or individual parts by using:
   - `ctrlmap-cli --copy-all` — export everything
@@ -60,6 +62,7 @@ human-readable data formats (Markdown and JSON). You can export
   - `ctrlmap-cli --copy-pols` — policies (alias: `--copy-pol`)
   - `ctrlmap-cli --copy-pros` — procedures (alias: `--copy-pro`)
   - `ctrlmap-cli --copy-risks` — risk register (alias: `--copy-risk`)
+  - `ctrlmap-cli --copy-vendors` — vendor register (alias: `--copy-vendor`)
 - Optional flags:
   - `--force` — overwrite existing files without confirmation
   - `--keep-raw-json` — also write raw JSON files alongside Markdown

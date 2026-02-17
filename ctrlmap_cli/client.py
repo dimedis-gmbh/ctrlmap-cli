@@ -79,6 +79,60 @@ class CtrlMapClient:
     def get_risk_areas(self, risk_id: int) -> Any:
         return self.get("/riskarea", params={"riskId": str(risk_id)})
 
+    _VENDORS_LIST_BODY: Dict[str, Any] = {
+        "startpos": 0,
+        "pagesize": 500,
+        "rules": [],
+    }
+
+    def list_vendors(self) -> Any:
+        return self.post("/vendors", json=self._VENDORS_LIST_BODY)
+
+    def get_vendor(self, vendor_id: int) -> Any:
+        return self.get(f"/vendor/{vendor_id}")
+
+    def get_vendor_risks(self, vendor_id: int) -> Any:
+        return self.get("/vendor/risks", params={"vendorId": str(vendor_id)})
+
+    def get_vendor_hyperlinks(self, vendor_id: int) -> Any:
+        return self.get("/vendor/hyperlinks", params={"vendorId": str(vendor_id)})
+
+    def get_vendor_contacts(self, vendor_id: int) -> Any:
+        return self.get("/vendor/contacts", params={"vendorId": str(vendor_id)})
+
+    def get_vendor_quick_assessment(self, assessment_id: int, link_id: int) -> Any:
+        return self.get(
+            "/vendor/question/checklist",
+            params={
+                "vendorAssessmentId": str(assessment_id),
+                "assessmentLinkId": str(link_id),
+            },
+        )
+
+    def download_file(self, url: str) -> bytes:
+        """Download a file from a URL (e.g. pre-signed S3 URL).
+
+        Uses a plain GET request without authentication headers.
+        """
+        try:
+            response = requests.get(url, timeout=120)
+        except requests.ConnectionError as exc:
+            raise ApiError(
+                f"Cannot download file from {url}. "
+                "Check your network connection."
+            ) from exc
+        except requests.RequestException as exc:
+            raise ApiError(
+                f"Failed to download file from {url}."
+            ) from exc
+
+        if response.status_code >= 400:
+            raise ApiError(
+                f"Failed to download file ({response.status_code}) from {url}."
+            )
+
+        return response.content
+
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         normalized_path = path.lstrip("/")
         url = self._base_url + normalized_path

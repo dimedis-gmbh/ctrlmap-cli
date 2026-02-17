@@ -340,16 +340,19 @@ class TestCliExportWiring:
         pol_instance = MagicMock()
         pro_instance = MagicMock()
         risk_instance = MagicMock()
+        vendor_instance = MagicMock()
 
         gov_cls = MagicMock(return_value=gov_instance)
         pol_cls = MagicMock(return_value=pol_instance)
         pro_cls = MagicMock(return_value=pro_instance)
         risk_cls = MagicMock(return_value=risk_instance)
+        vendor_cls = MagicMock(return_value=vendor_instance)
 
         monkeypatch.setattr("ctrlmap_cli.cli.GovernanceExporter", gov_cls)
         monkeypatch.setattr("ctrlmap_cli.cli.PoliciesExporter", pol_cls)
         monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", pro_cls)
         monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", risk_cls)
+        monkeypatch.setattr("ctrlmap_cli.cli.VendorsExporter", vendor_cls)
 
         with patch("sys.argv", ["ctrlmap-cli", "--copy-all"]):
             from ctrlmap_cli.cli import main
@@ -360,11 +363,13 @@ class TestCliExportWiring:
         pol_cls.assert_called_once_with(client, tmp_path / "pols", **kwargs)
         pro_cls.assert_called_once_with(client, tmp_path / "pros", **kwargs)
         risk_cls.assert_called_once_with(client, tmp_path / "risks", **kwargs)
+        vendor_cls.assert_called_once_with(client, tmp_path / "vendors", **kwargs)
 
         gov_instance.export.assert_called_once()
         pol_instance.export.assert_called_once()
         pro_instance.export.assert_called_once()
         risk_instance.export.assert_called_once()
+        vendor_instance.export.assert_called_once()
 
     def test_force_and_keep_raw_json_passed_to_exporters(
         self,
@@ -431,3 +436,27 @@ class TestCliExportWiring:
             client, tmp_path / "risks", force=False, keep_raw_json=False,
         )
         risk_instance.export.assert_called_once()
+
+    def test_copy_vendor_alias_uses_vendors_output_dir(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        client = self._setup_cli(monkeypatch, tmp_path)
+        vendor_instance = MagicMock()
+        vendor_cls = MagicMock(return_value=vendor_instance)
+
+        monkeypatch.setattr("ctrlmap_cli.cli.GovernanceExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.PoliciesExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", MagicMock())
+        monkeypatch.setattr("ctrlmap_cli.cli.VendorsExporter", vendor_cls)
+
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-vendor"]):
+            from ctrlmap_cli.cli import main
+            main()
+
+        vendor_cls.assert_called_once_with(
+            client, tmp_path / "vendors", force=False, keep_raw_json=False,
+        )
+        vendor_instance.export.assert_called_once()

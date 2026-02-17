@@ -106,6 +106,7 @@ class TestCopyFlagsRequireConfig:
     @pytest.mark.parametrize("flag", [
         "--copy-all", "--copy-gov", "--copy-pols", "--copy-pol",
         "--copy-pros", "--copy-pro", "--copy-risks", "--copy-risk",
+        "--copy-vendors", "--copy-vendor",
     ])
     def test_copy_flags_fail_without_config(
         self, flag: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
