@@ -33,85 +33,125 @@ def _make_risk_detail(doc_id: int = 32, code: str = "RSK-1", name: str = "Risk")
     }
 
 
+class _Concrete(BaseExporter):
+    """Minimal concrete subclass for testing BaseExporter."""
+    def export(self) -> None:
+        pass
+
+    def export_single(self, item_code: str) -> None:
+        pass
+
+
 class TestBaseExporter:
     def test_cannot_instantiate(self) -> None:
         with pytest.raises(TypeError):
             BaseExporter(MagicMock(), Path("/tmp/test"))  # type: ignore[abstract]
 
     def test_ensure_output_dir_creates_directory(self, tmp_path: Path) -> None:
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
-        exporter = Concrete(MagicMock(), tmp_path / "nested" / "dir")
+        exporter = _Concrete(MagicMock(), tmp_path / "nested" / "dir")
         exporter._ensure_output_dir()
         assert (tmp_path / "nested" / "dir").is_dir()
 
     def test_log_prints_to_stdout(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
-        exporter = Concrete(MagicMock(), tmp_path)
+        exporter = _Concrete(MagicMock(), tmp_path)
         exporter._log("hello world")
         assert "hello world" in capsys.readouterr().out
 
 
+class TestParseItemCode:
+    def test_full_code(self) -> None:
+        assert BaseExporter._parse_item_code("GOV-1", "GOV") == ("GOV-1", 1)
+
+    def test_numeric_only(self) -> None:
+        assert BaseExporter._parse_item_code("5", "RSK") == ("RSK-5", 5)
+
+    def test_case_insensitive(self) -> None:
+        assert BaseExporter._parse_item_code("gov-3", "GOV") == ("GOV-3", 3)
+
+    def test_whitespace_stripped(self) -> None:
+        assert BaseExporter._parse_item_code("  POL-7  ", "POL") == ("POL-7", 7)
+
+    def test_invalid_format_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid item code"):
+            BaseExporter._parse_item_code("INVALID", "GOV")
+
+    def test_wrong_prefix_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid item code"):
+            BaseExporter._parse_item_code("POL-1", "GOV")
+
+
+class TestReadLocalFrontmatter:
+    def test_reads_frontmatter_from_md_files(self, tmp_path: Path) -> None:
+        (tmp_path / "GOV-1.md").write_text(
+            "---\nid: GOV-1\ntitle: First Doc\nstatus: Approved\n---\n\n# GOV-1\n"
+        )
+        (tmp_path / "GOV-2.md").write_text(
+            "---\nid: GOV-2\ntitle: Second Doc\n---\n\n# GOV-2\n"
+        )
+        exporter = _Concrete(MagicMock(), tmp_path)
+        result = exporter._read_local_frontmatter()
+        assert "GOV-1" in result
+        assert result["GOV-1"]["title"] == "First Doc"
+        assert "GOV-2" in result
+        assert result["GOV-2"]["title"] == "Second Doc"
+
+    def test_excludes_index_md(self, tmp_path: Path) -> None:
+        (tmp_path / "index.md").write_text("---\ngenerated: now\n---\n\n# Index\n")
+        (tmp_path / "GOV-1.md").write_text("---\nid: GOV-1\n---\n\n# GOV-1\n")
+        exporter = _Concrete(MagicMock(), tmp_path)
+        result = exporter._read_local_frontmatter()
+        assert "index" not in result
+        assert "GOV-1" in result
+
+    def test_empty_dir(self, tmp_path: Path) -> None:
+        exporter = _Concrete(MagicMock(), tmp_path)
+        assert exporter._read_local_frontmatter() == {}
+
+    def test_nonexistent_dir(self, tmp_path: Path) -> None:
+        exporter = _Concrete(MagicMock(), tmp_path / "nonexistent")
+        assert exporter._read_local_frontmatter() == {}
+
+    def test_skips_files_without_frontmatter(self, tmp_path: Path) -> None:
+        (tmp_path / "GOV-1.md").write_text("# No frontmatter here\n")
+        exporter = _Concrete(MagicMock(), tmp_path)
+        assert exporter._read_local_frontmatter() == {}
+
+
 class TestBaseExporterOverwrite:
     def test_should_write_returns_true_for_new_file(self, tmp_path: Path) -> None:
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
-        exporter = Concrete(MagicMock(), tmp_path)
+        exporter = _Concrete(MagicMock(), tmp_path)
         assert exporter._should_write(tmp_path / "new-file.md") is True
 
     def test_should_write_returns_true_with_force(self, tmp_path: Path) -> None:
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
         existing = tmp_path / "existing.md"
         existing.write_text("content")
 
-        exporter = Concrete(MagicMock(), tmp_path, force=True)
+        exporter = _Concrete(MagicMock(), tmp_path, force=True)
         assert exporter._should_write(existing) is True
 
     def test_should_write_prompts_and_respects_no(self, tmp_path: Path) -> None:
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
         existing = tmp_path / "existing.md"
         existing.write_text("content")
 
-        exporter = Concrete(MagicMock(), tmp_path)
+        exporter = _Concrete(MagicMock(), tmp_path)
         with patch("builtins.input", return_value="n"):
             assert exporter._should_write(existing) is False
 
     def test_should_write_prompts_and_respects_yes(self, tmp_path: Path) -> None:
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
         existing = tmp_path / "existing.md"
         existing.write_text("content")
 
-        exporter = Concrete(MagicMock(), tmp_path)
+        exporter = _Concrete(MagicMock(), tmp_path)
         with patch("builtins.input", return_value="y"):
             assert exporter._should_write(existing) is True
 
     def test_should_write_all_sets_overwrite_all(self, tmp_path: Path) -> None:
-        class Concrete(BaseExporter):
-            def export(self) -> None:
-                pass
-
         f1 = tmp_path / "a.md"
         f2 = tmp_path / "b.md"
         f1.write_text("a")
         f2.write_text("b")
 
-        exporter = Concrete(MagicMock(), tmp_path)
+        exporter = _Concrete(MagicMock(), tmp_path)
         with patch("builtins.input", return_value="a") as mock_input:
             assert exporter._should_write(f1) is True
             assert exporter._should_write(f2) is True
@@ -310,7 +350,7 @@ class TestCliExportWiring:
         monkeypatch.setattr("ctrlmap_cli.cli.CtrlMapClient", MagicMock(return_value=client))
         return client
 
-    def test_copy_gov_uses_governance_output_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_copy_govs_uses_governance_output_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         client = self._setup_cli(monkeypatch, tmp_path)
         gov_instance = MagicMock()
         gov_cls = MagicMock(return_value=gov_instance)
@@ -320,7 +360,7 @@ class TestCliExportWiring:
         monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", MagicMock())
         monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", MagicMock())
 
-        with patch("sys.argv", ["ctrlmap-cli", "--copy-gov"]):
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-govs"]):
             from ctrlmap_cli.cli import main
             main()
 
@@ -328,6 +368,22 @@ class TestCliExportWiring:
             client, tmp_path / "govs", force=False, keep_raw_json=False,
         )
         gov_instance.export.assert_called_once()
+
+    def test_copy_gov_single_calls_export_single(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        client = self._setup_cli(monkeypatch, tmp_path)
+        gov_instance = MagicMock()
+        gov_cls = MagicMock(return_value=gov_instance)
+
+        monkeypatch.setattr("ctrlmap_cli.cli.GovernanceExporter", gov_cls)
+
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-gov", "GOV-1"]):
+            from ctrlmap_cli.cli import main
+            main()
+
+        gov_cls.assert_called_once_with(
+            client, tmp_path / "govs", force=False, keep_raw_json=False,
+        )
+        gov_instance.export_single.assert_called_once_with("GOV-1")
 
     def test_copy_all_runs_all_exporters_with_expected_dirs(
         self,
@@ -383,7 +439,7 @@ class TestCliExportWiring:
         monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", MagicMock())
         monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", MagicMock())
 
-        with patch("sys.argv", ["ctrlmap-cli", "--copy-gov", "--force", "--keep-raw-json"]):
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-govs", "--force", "--keep-raw-json"]):
             from ctrlmap_cli.cli import main
             main()
 
@@ -391,7 +447,7 @@ class TestCliExportWiring:
             client, tmp_path / "govs", force=True, keep_raw_json=True,
         )
 
-    def test_copy_pro_alias_uses_pros_output_dir(
+    def test_copy_pro_singular_calls_export_single(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
@@ -400,21 +456,18 @@ class TestCliExportWiring:
         pro_instance = MagicMock()
         pro_cls = MagicMock(return_value=pro_instance)
 
-        monkeypatch.setattr("ctrlmap_cli.cli.GovernanceExporter", MagicMock())
-        monkeypatch.setattr("ctrlmap_cli.cli.PoliciesExporter", MagicMock())
         monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", pro_cls)
-        monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", MagicMock())
 
-        with patch("sys.argv", ["ctrlmap-cli", "--copy-pro"]):
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-pro", "PRO-3"]):
             from ctrlmap_cli.cli import main
             main()
 
         pro_cls.assert_called_once_with(
             client, tmp_path / "pros", force=False, keep_raw_json=False,
         )
-        pro_instance.export.assert_called_once()
+        pro_instance.export_single.assert_called_once_with("PRO-3")
 
-    def test_copy_risk_alias_uses_risks_output_dir(
+    def test_copy_risk_singular_calls_export_single(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
@@ -423,21 +476,18 @@ class TestCliExportWiring:
         risk_instance = MagicMock()
         risk_cls = MagicMock(return_value=risk_instance)
 
-        monkeypatch.setattr("ctrlmap_cli.cli.GovernanceExporter", MagicMock())
-        monkeypatch.setattr("ctrlmap_cli.cli.PoliciesExporter", MagicMock())
-        monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", MagicMock())
         monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", risk_cls)
 
-        with patch("sys.argv", ["ctrlmap-cli", "--copy-risk"]):
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-risk", "RSK-5"]):
             from ctrlmap_cli.cli import main
             main()
 
         risk_cls.assert_called_once_with(
             client, tmp_path / "risks", force=False, keep_raw_json=False,
         )
-        risk_instance.export.assert_called_once()
+        risk_instance.export_single.assert_called_once_with("RSK-5")
 
-    def test_copy_vendor_alias_uses_vendors_output_dir(
+    def test_copy_vendor_singular_calls_export_single(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
@@ -446,17 +496,13 @@ class TestCliExportWiring:
         vendor_instance = MagicMock()
         vendor_cls = MagicMock(return_value=vendor_instance)
 
-        monkeypatch.setattr("ctrlmap_cli.cli.GovernanceExporter", MagicMock())
-        monkeypatch.setattr("ctrlmap_cli.cli.PoliciesExporter", MagicMock())
-        monkeypatch.setattr("ctrlmap_cli.cli.ProceduresExporter", MagicMock())
-        monkeypatch.setattr("ctrlmap_cli.cli.RisksExporter", MagicMock())
         monkeypatch.setattr("ctrlmap_cli.cli.VendorsExporter", vendor_cls)
 
-        with patch("sys.argv", ["ctrlmap-cli", "--copy-vendor"]):
+        with patch("sys.argv", ["ctrlmap-cli", "--copy-vendor", "VND-17"]):
             from ctrlmap_cli.cli import main
             main()
 
         vendor_cls.assert_called_once_with(
             client, tmp_path / "vendors", force=False, keep_raw_json=False,
         )
-        vendor_instance.export.assert_called_once()
+        vendor_instance.export_single.assert_called_once_with("VND-17")

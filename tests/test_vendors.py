@@ -582,6 +582,121 @@ class TestVendorsProgress:
         assert "0 documents" in captured.out
 
 
+class TestVendorsSingleExport:
+    def test_export_single_by_full_code(self, tmp_path: Path) -> None:
+        """User passes the vendor code (VND-17), not the API entity ID (41)."""
+        client = _setup_client(
+            list_response=[{"id": 41}, {"id": 42}],
+            detail=_make_detail(),
+            quick_assessment=_make_quick_assessment(),
+        )
+
+        VendorsExporter(client, tmp_path / "vendors", force=True).export_single("VND-17")
+
+        assert (tmp_path / "vendors" / "VND-17.md").exists()
+
+    def test_export_single_by_numeric_code(self, tmp_path: Path) -> None:
+        """Numeric '17' is treated as VND-17 (the vendor code)."""
+        client = _setup_client(
+            list_response=[{"id": 41}],
+            detail=_make_detail(),
+        )
+
+        VendorsExporter(client, tmp_path / "vendors", force=True).export_single("17")
+
+        assert (tmp_path / "vendors" / "VND-17.md").exists()
+
+    def test_export_single_not_found_raises_error(self, tmp_path: Path) -> None:
+        from ctrlmap_cli.exceptions import ItemNotFoundError
+
+        client = _setup_client(
+            list_response=[{"id": 41}],
+            detail=_make_detail(),
+        )
+
+        with pytest.raises(ItemNotFoundError, match="VND-99"):
+            VendorsExporter(client, tmp_path / "vendors", force=True).export_single("VND-99")
+
+    def test_export_single_rebuilds_index(self, tmp_path: Path) -> None:
+        """Index is rebuilt from local frontmatter; document_count uses API list."""
+        client = _setup_client(
+            list_response=[{"id": 41}, {"id": 42}],
+            detail=_make_detail(),
+        )
+
+        VendorsExporter(client, tmp_path / "vendors", force=True).export_single("VND-17")
+
+        index = (tmp_path / "vendors" / "index.md").read_text()
+        assert "document_count: 2" in index
+        assert "[VND-17](VND-17.md)" in index
+
+    def test_export_single_index_uses_local_frontmatter(self, tmp_path: Path) -> None:
+        vendors = tmp_path / "vendors"
+        vendors.mkdir(parents=True)
+        (vendors / "VND-42.md").write_text(
+            "---\nid: VND-42\ntitle: Other Vendor\nstatus: Active\n"
+            "vendor_type: SaaS\nrisk_score: 1.5\ntier: Low\n---\n# VND-42\n"
+        )
+
+        client = _setup_client(
+            list_response=[{"id": 41}, {"id": 42}],
+            detail=_make_detail(),
+        )
+
+        VendorsExporter(client, vendors, force=True).export_single("VND-17")
+
+        index = (vendors / "index.md").read_text()
+        assert "Other Vendor" in index
+
+    def test_export_single_downloads_documents(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_response=[{"id": 41}],
+            detail=_make_detail_with_docs(),
+        )
+
+        VendorsExporter(client, tmp_path / "vendors", force=True).export_single("VND-17")
+
+        doc_dir = tmp_path / "vendors" / "documents" / "VND-17-hetzner"
+        assert doc_dir.exists()
+        assert (doc_dir / "dpa-audit.pdf").exists()
+
+    def test_export_single_progress_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        client = _setup_client(
+            list_response=[{"id": 41}],
+            detail=_make_detail(),
+        )
+
+        VendorsExporter(client, tmp_path / "vendors", force=True).export_single("VND-17")
+
+        output = capsys.readouterr().out
+        assert "VND-17" in output
+        assert "done" in output
+
+    def test_export_single_with_dict_wrapped_list(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_response={"vendorDTOS": [{"id": 41}]},
+            detail=_make_detail(),
+        )
+
+        VendorsExporter(client, tmp_path / "vendors", force=True).export_single("VND-17")
+
+        assert (tmp_path / "vendors" / "VND-17.md").exists()
+
+    def test_export_single_code_differs_from_api_id(self, tmp_path: Path) -> None:
+        """VND-17 might have API entity ID 41 — code number != API ID."""
+        detail = _make_detail(vendor_id=200, code="VND-50", name="Custom Vendor")
+        client = _setup_client(
+            list_response=[{"id": 200}],
+            detail=detail,
+        )
+
+        VendorsExporter(client, tmp_path / "vendors", force=True).export_single("VND-50")
+
+        assert (tmp_path / "vendors" / "VND-50.md").exists()
+
+
 class TestVendorsOverwrite:
     def test_force_overwrites(self, tmp_path: Path) -> None:
         out = tmp_path / "vendors"

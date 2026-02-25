@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import getpass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from ctrlmap_cli import __version__
 from ctrlmap_cli.client import CtrlMapClient
@@ -36,19 +36,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Initialize configuration with the ControlMap API URL.",
     )
     group.add_argument("--copy-all", action="store_true", help="Export all data.")
-    group.add_argument("--copy-gov", action="store_true", help="Export governance documents.")
-    group.add_argument(
-        "--copy-pols", "--copy-pol", dest="copy_pols", action="store_true", help="Export policies.",
-    )
-    group.add_argument(
-        "--copy-pros", "--copy-pro", dest="copy_pros", action="store_true", help="Export procedures.",
-    )
-    group.add_argument(
-        "--copy-risks", "--copy-risk", dest="copy_risks", action="store_true", help="Export risk register.",
-    )
-    group.add_argument(
-        "--copy-vendors", "--copy-vendor", dest="copy_vendors", action="store_true", help="Export vendor data.",
-    )
+    group.add_argument("--copy-govs", action="store_true", help="Export all governance documents.")
+    group.add_argument("--copy-gov", metavar="CODE", help="Export a single governance document by code.")
+    group.add_argument("--copy-pols", action="store_true", help="Export all policies.")
+    group.add_argument("--copy-pol", metavar="CODE", help="Export a single policy by code.")
+    group.add_argument("--copy-pros", action="store_true", help="Export all procedures.")
+    group.add_argument("--copy-pro", metavar="CODE", help="Export a single procedure by code.")
+    group.add_argument("--copy-risks", action="store_true", help="Export all risks.")
+    group.add_argument("--copy-risk", metavar="CODE", help="Export a single risk by code.")
+    group.add_argument("--copy-vendors", action="store_true", help="Export all vendors.")
+    group.add_argument("--copy-vendor", metavar="CODE", help="Export a single vendor by code.")
     parser.add_argument(
         "--force", action="store_true",
         help="Overwrite existing files without confirmation.",
@@ -101,8 +98,24 @@ def _run_export(args: argparse.Namespace) -> None:
         "keep_raw_json": args.keep_raw_json,
     }
 
+    # Single-item exports
+    _SINGLE_EXPORTS: List[tuple] = [
+        (args.copy_gov, GovernanceExporter, "govs"),
+        (args.copy_pol, PoliciesExporter, "pols"),
+        (args.copy_pro, ProceduresExporter, "pros"),
+        (args.copy_risk, RisksExporter, "risks"),
+        (args.copy_vendor, VendorsExporter, "vendors"),
+    ]
+
+    for code, exporter_cls, subdir in _SINGLE_EXPORTS:
+        if code is not None:
+            exporter: BaseExporter = exporter_cls(client, cwd / subdir, **export_kwargs)
+            exporter.export_single(code)
+            return
+
+    # Bulk exports
     exporters: List[BaseExporter] = []
-    if args.copy_all or args.copy_gov:
+    if args.copy_all or args.copy_govs:
         exporters.append(GovernanceExporter(client, cwd / "govs", **export_kwargs))
     if args.copy_all or args.copy_pols:
         exporters.append(PoliciesExporter(client, cwd / "pols", **export_kwargs))
@@ -117,13 +130,33 @@ def _run_export(args: argparse.Namespace) -> None:
         exporter.export()
 
 
+def _has_export_flag(args: argparse.Namespace) -> bool:
+    """Check whether any export flag was provided."""
+    return bool(
+        args.copy_all or args.copy_govs or args.copy_gov
+        or args.copy_pols or args.copy_pol
+        or args.copy_pros or args.copy_pro
+        or args.copy_risks or args.copy_risk
+        or args.copy_vendors or args.copy_vendor
+    )
+
+
+def _get_single_code(args: argparse.Namespace) -> Optional[str]:
+    """Return the single-item code if a singular flag was used, else None."""
+    for attr in ("copy_gov", "copy_pol", "copy_pro", "copy_risk", "copy_vendor"):
+        val = getattr(args, attr, None)
+        if val is not None:
+            return val
+    return None
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
     if args.init:
         _run_init(args.init)
-    elif args.copy_all or args.copy_gov or args.copy_pols or args.copy_pros or args.copy_risks or args.copy_vendors:
+    elif _has_export_flag(args):
         _run_export(args)
     else:
         parser.print_help()

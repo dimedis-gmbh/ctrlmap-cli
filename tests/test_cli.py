@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ctrlmap_cli.cli import main, _SUBDIRS
+from ctrlmap_cli.cli import main, _build_parser, _SUBDIRS
 from ctrlmap_cli.config import CONFIG_FILENAME, read_config
 from ctrlmap_cli.exceptions import ConfigError
 
@@ -104,17 +104,88 @@ class TestInitErrors:
 
 class TestCopyFlagsRequireConfig:
     @pytest.mark.parametrize("flag", [
-        "--copy-all", "--copy-gov", "--copy-pols", "--copy-pol",
-        "--copy-pros", "--copy-pro", "--copy-risks", "--copy-risk",
-        "--copy-vendors", "--copy-vendor",
+        "--copy-all", "--copy-govs", "--copy-pols",
+        "--copy-pros", "--copy-risks", "--copy-vendors",
     ])
-    def test_copy_flags_fail_without_config(
+    def test_plural_flags_fail_without_config(
         self, flag: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.chdir(tmp_path)
         with patch("sys.argv", ["ctrlmap-cli", flag]):
             with pytest.raises(ConfigError):
                 main()
+
+    @pytest.mark.parametrize("flag,code", [
+        ("--copy-gov", "GOV-1"),
+        ("--copy-pol", "POL-1"),
+        ("--copy-pro", "PRO-1"),
+        ("--copy-risk", "RSK-1"),
+        ("--copy-vendor", "VND-1"),
+    ])
+    def test_singular_flags_fail_without_config(
+        self, flag: str, code: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ctrlmap-cli", flag, code]):
+            with pytest.raises(ConfigError):
+                main()
+
+
+class TestParserArgStructure:
+    """Test that the parser accepts the correct argument structures."""
+
+    def test_plural_flags_are_store_true(self) -> None:
+        parser = _build_parser()
+        for flag in ("--copy-govs", "--copy-pols", "--copy-pros", "--copy-risks", "--copy-vendors"):
+            args = parser.parse_args([flag])
+            attr = flag.lstrip("-").replace("-", "_")
+            assert getattr(args, attr) is True
+
+    def test_singular_flags_accept_code_value(self) -> None:
+        parser = _build_parser()
+        for flag, attr, code in [
+            ("--copy-gov", "copy_gov", "GOV-1"),
+            ("--copy-pol", "copy_pol", "POL-4"),
+            ("--copy-pro", "copy_pro", "PRO-3"),
+            ("--copy-risk", "copy_risk", "RSK-5"),
+            ("--copy-vendor", "copy_vendor", "VND-17"),
+        ]:
+            args = parser.parse_args([flag, code])
+            assert getattr(args, attr) == code
+
+    def test_singular_flags_accept_numeric_code(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["--copy-gov", "1"])
+        assert args.copy_gov == "1"
+
+    def test_singular_flags_require_value(self) -> None:
+        parser = _build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--copy-gov"])
+
+    def test_mutual_exclusivity(self) -> None:
+        parser = _build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--copy-govs", "--copy-pols"])
+
+    def test_mutual_exclusivity_singular_and_plural(self) -> None:
+        parser = _build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--copy-govs", "--copy-pol", "POL-1"])
+
+    def test_copy_all_is_mutually_exclusive_with_singular(self) -> None:
+        parser = _build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--copy-all", "--copy-gov", "GOV-1"])
+
+    def test_defaults_are_none_or_false(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args([])
+        assert args.copy_govs is False
+        assert args.copy_gov is None
+        assert args.copy_pols is False
+        assert args.copy_pol is None
+        assert args.copy_all is False
 
 
 class TestInitSubprocess:

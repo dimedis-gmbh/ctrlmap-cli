@@ -554,6 +554,118 @@ class TestRisksProgress:
         assert "0 documents" in capsys.readouterr().out
 
 
+class TestRisksSingleExport:
+    def test_export_single_by_full_code(self, tmp_path: Path) -> None:
+        """User passes the riskid code (RSK-1), not the API entity ID."""
+        detail = _make_detail(32, "RSK-1")
+        client = _setup_client(
+            list_response={"riskDTOS": [{"id": 32}, {"id": 33}]},
+            detail=detail,
+        )
+
+        RisksExporter(client, tmp_path / "risks", force=True).export_single("RSK-1")
+
+        assert (tmp_path / "risks" / "RSK-1.md").exists()
+        content = (tmp_path / "risks" / "RSK-1.md").read_text()
+        assert "# RSK-1 — Test Risk" in content
+
+    def test_export_single_by_numeric_code(self, tmp_path: Path) -> None:
+        """Numeric '1' is treated as RSK-1 (the riskid code)."""
+        client = _setup_client(
+            list_response={"riskDTOS": [{"id": 32}]},
+            detail=_make_detail(32, "RSK-1"),
+        )
+
+        RisksExporter(client, tmp_path / "risks", force=True).export_single("1")
+
+        assert (tmp_path / "risks" / "RSK-1.md").exists()
+
+    def test_export_single_not_found_raises_error(self, tmp_path: Path) -> None:
+        from ctrlmap_cli.exceptions import ItemNotFoundError
+
+        client = _setup_client(
+            list_response={"riskDTOS": [{"id": 32}]},
+            detail=_make_detail(32, "RSK-1"),
+        )
+
+        with pytest.raises(ItemNotFoundError, match="RSK-99"):
+            RisksExporter(client, tmp_path / "risks", force=True).export_single("RSK-99")
+
+    def test_export_single_rebuilds_index(self, tmp_path: Path) -> None:
+        """Index is rebuilt from local frontmatter; document_count uses API list."""
+        client = _setup_client(
+            list_response={"riskDTOS": [{"id": 32}, {"id": 33}]},
+            detail=_make_detail(32, "RSK-1"),
+        )
+
+        RisksExporter(client, tmp_path / "risks", force=True).export_single("RSK-1")
+
+        index = (tmp_path / "risks" / "index.md").read_text()
+        assert "document_count: 2" in index
+        assert "[RSK-1](RSK-1.md)" in index
+
+    def test_export_single_index_uses_local_frontmatter(self, tmp_path: Path) -> None:
+        risks = tmp_path / "risks"
+        risks.mkdir(parents=True)
+        (risks / "RSK-33.md").write_text(
+            "---\nid: RSK-33\ntitle: Existing Risk\nowner: Bob\n"
+            "status: Open\ntreatment: Accept\n"
+            "current_risk:\n  score: 5\n  level: Low\n"
+            "target_risk:\n  score: 2\n  level: Low\n---\n# RSK-33\n"
+        )
+
+        detail1 = _make_detail(32, "RSK-1")
+        client = MagicMock()
+        client.list_risks.return_value = {"riskDTOS": [{"id": 32}, {"id": 33}]}
+        client.get_risk.return_value = detail1
+        client.get_risk_areas.return_value = []
+
+        RisksExporter(client, risks, force=True).export_single("RSK-1")
+
+        index = (risks / "index.md").read_text()
+        assert "Existing Risk" in index
+        assert "Bob" in index
+
+    def test_export_single_progress_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        client = _setup_client(
+            list_response={"riskDTOS": [{"id": 32}]},
+            detail=_make_detail(32, "RSK-1"),
+        )
+
+        RisksExporter(client, tmp_path / "risks", force=True).export_single("RSK-1")
+
+        output = capsys.readouterr().out
+        assert "RSK-1" in output
+        assert "done" in output
+
+    def test_export_single_with_plain_list(self, tmp_path: Path) -> None:
+        """API may return a plain list instead of {riskDTOS: [...]}."""
+        client = _setup_client(
+            list_response=[{"id": 32}],
+            detail=_make_detail(32, "RSK-1"),
+        )
+
+        RisksExporter(client, tmp_path / "risks", force=True).export_single("RSK-1")
+
+        assert (tmp_path / "risks" / "RSK-1.md").exists()
+
+    def test_export_single_code_differs_from_api_id(self, tmp_path: Path) -> None:
+        """RSK-66 might have API entity ID 97 — code number != API ID."""
+        detail = _make_detail(97, "RSK-66", name=" Data Breach Risk ")
+        client = MagicMock()
+        client.list_risks.return_value = {"riskDTOS": [{"id": 97}]}
+        client.get_risk.return_value = detail
+        client.get_risk_areas.return_value = []
+
+        RisksExporter(client, tmp_path / "risks", force=True).export_single("RSK-66")
+
+        assert (tmp_path / "risks" / "RSK-66.md").exists()
+        content = (tmp_path / "risks" / "RSK-66.md").read_text()
+        assert "# RSK-66 — Data Breach Risk" in content
+
+
 class TestRisksOverwrite:
     def test_force_overwrites(self, tmp_path: Path) -> None:
         risks = tmp_path / "risks"

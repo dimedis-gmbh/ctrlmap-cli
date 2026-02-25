@@ -433,6 +433,89 @@ class TestProceduresEdgeCases:
         assert "updated: '2026-01-26'" in content or 'updated: "2026-01-26"' in content
 
 
+class TestProceduresSingleExport:
+    def test_export_single_by_full_code(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(28, "PRO-3"), _make_list_item(29, "PRO-5")],
+            details={28: _make_detail(28, "PRO-3")},
+            controls={28: _make_controls()},
+            requirements={28: _make_requirements()},
+        )
+
+        ProceduresExporter(client, tmp_path / "pros", force=True).export_single("PRO-3")
+
+        assert (tmp_path / "pros" / "PRO-3.md").exists()
+        content = (tmp_path / "pros" / "PRO-3.md").read_text()
+        assert "# PRO-3 — Test Procedure" in content
+
+    def test_export_single_by_numeric_code(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(28, "PRO-3")],
+            details={28: _make_detail(28, "PRO-3")},
+        )
+
+        ProceduresExporter(client, tmp_path / "pros", force=True).export_single("3")
+
+        assert (tmp_path / "pros" / "PRO-3.md").exists()
+
+    def test_export_single_not_found_raises_error(self, tmp_path: Path) -> None:
+        from ctrlmap_cli.exceptions import ItemNotFoundError
+
+        client = _setup_client(
+            list_items=[_make_list_item(28, "PRO-3")],
+            details={},
+        )
+
+        with pytest.raises(ItemNotFoundError, match="PRO-99"):
+            ProceduresExporter(client, tmp_path / "pros", force=True).export_single("PRO-99")
+
+    def test_export_single_rebuilds_index(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(28, "PRO-3"), _make_list_item(29, "PRO-5")],
+            details={28: _make_detail(28, "PRO-3")},
+        )
+
+        ProceduresExporter(client, tmp_path / "pros", force=True).export_single("PRO-3")
+
+        index = (tmp_path / "pros" / "index.md").read_text()
+        assert "document_count: 2" in index
+        assert "[PRO-3](PRO-3.md)" in index
+        assert "[PRO-5](PRO-5.md)" in index
+
+    def test_export_single_index_uses_local_frontmatter(self, tmp_path: Path) -> None:
+        pros = tmp_path / "pros"
+        pros.mkdir(parents=True)
+        (pros / "PRO-5.md").write_text(
+            "---\nid: PRO-5\ntitle: Existing Procedure\nowner: Bob\n"
+            "status: Draft\nclassification: Public\n---\n# PRO-5\n"
+        )
+
+        client = _setup_client(
+            list_items=[_make_list_item(28, "PRO-3"), _make_list_item(29, "PRO-5")],
+            details={28: _make_detail(28, "PRO-3")},
+        )
+
+        ProceduresExporter(client, pros, force=True).export_single("PRO-3")
+
+        index = (pros / "index.md").read_text()
+        assert "Existing Procedure" in index
+        assert "Bob" in index
+
+    def test_export_single_progress_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(28, "PRO-3")],
+            details={28: _make_detail(28, "PRO-3")},
+        )
+
+        ProceduresExporter(client, tmp_path / "pros", force=True).export_single("PRO-3")
+
+        output = capsys.readouterr().out
+        assert "PRO-3" in output
+        assert "done" in output
+
+
 class TestProceduresOverwrite:
     def test_force_overwrites_without_prompt(self, tmp_path: Path) -> None:
         pros = tmp_path / "pros"

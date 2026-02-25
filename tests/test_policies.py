@@ -470,6 +470,87 @@ class TestPoliciesEdgeCases:
         assert "updated: '2026-03-01'" in content or 'updated: "2026-03-01"' in content
 
 
+class TestPoliciesSingleExport:
+    def test_export_single_by_full_code(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(10, "POL-4"), _make_list_item(11, "POL-5")],
+            details={10: _make_detail(10, "POL-4")},
+        )
+
+        PoliciesExporter(client, tmp_path / "pols", force=True).export_single("POL-4")
+
+        assert (tmp_path / "pols" / "POL-4.md").exists()
+        content = (tmp_path / "pols" / "POL-4.md").read_text()
+        assert "# POL-4 — Test Policy" in content
+
+    def test_export_single_by_numeric_code(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(10, "POL-4")],
+            details={10: _make_detail(10, "POL-4")},
+        )
+
+        PoliciesExporter(client, tmp_path / "pols", force=True).export_single("4")
+
+        assert (tmp_path / "pols" / "POL-4.md").exists()
+
+    def test_export_single_not_found_raises_error(self, tmp_path: Path) -> None:
+        from ctrlmap_cli.exceptions import ItemNotFoundError
+
+        client = _setup_client(
+            list_items=[_make_list_item(10, "POL-4")],
+            details={},
+        )
+
+        with pytest.raises(ItemNotFoundError, match="POL-99"):
+            PoliciesExporter(client, tmp_path / "pols", force=True).export_single("POL-99")
+
+    def test_export_single_rebuilds_index(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(10, "POL-4"), _make_list_item(11, "POL-5")],
+            details={10: _make_detail(10, "POL-4")},
+        )
+
+        PoliciesExporter(client, tmp_path / "pols", force=True).export_single("POL-4")
+
+        index = (tmp_path / "pols" / "index.md").read_text()
+        assert "document_count: 2" in index
+        assert "[POL-4](POL-4.md)" in index
+        assert "[POL-5](POL-5.md)" in index
+
+    def test_export_single_index_uses_local_frontmatter(self, tmp_path: Path) -> None:
+        pols = tmp_path / "pols"
+        pols.mkdir(parents=True)
+        (pols / "POL-5.md").write_text(
+            "---\nid: POL-5\ntitle: Existing Policy\nowner: Bob\n"
+            "status: Draft\nclassification: Public\n---\n# POL-5\n"
+        )
+
+        client = _setup_client(
+            list_items=[_make_list_item(10, "POL-4"), _make_list_item(11, "POL-5")],
+            details={10: _make_detail(10, "POL-4")},
+        )
+
+        PoliciesExporter(client, pols, force=True).export_single("POL-4")
+
+        index = (pols / "index.md").read_text()
+        assert "Existing Policy" in index
+        assert "Bob" in index
+
+    def test_export_single_progress_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(10, "POL-4")],
+            details={10: _make_detail(10, "POL-4")},
+        )
+
+        PoliciesExporter(client, tmp_path / "pols", force=True).export_single("POL-4")
+
+        output = capsys.readouterr().out
+        assert "POL-4" in output
+        assert "done" in output
+
+
 class TestPoliciesOverwrite:
     def test_force_overwrites_without_prompt(self, tmp_path: Path) -> None:
         pols = tmp_path / "pols"

@@ -4,6 +4,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from ctrlmap_cli.exceptions import ItemNotFoundError
 from ctrlmap_cli.exporters.base import BaseExporter
 from ctrlmap_cli.formatters.markdown_formatter import MarkdownFormatter
 from ctrlmap_cli.html_converter import decode_description, html_to_markdown
@@ -52,6 +53,87 @@ class GovernanceExporter(BaseExporter):
             )
         else:
             self._log("Exporting governance... done (0 documents)")
+
+    def export_single(self, item_code: str) -> None:
+        self._ensure_output_dir()
+        full_code, _ = self._parse_item_code(item_code, "GOV")
+        self._log(f"Exporting governance document {full_code}...")
+
+        raw_list: List[Dict[str, Any]] = self.client.post(
+            "/procedures", json=self._LIST_BODY,
+        )
+
+        match = _find_by_code(raw_list, full_code, "procedureCode")
+        if match is None:
+            raise ItemNotFoundError(
+                f"Governance document '{full_code}' not found in ControlMap. "
+                "Check the code and try again."
+            )
+
+        doc_id = match.get("id", 0)
+        detail = self.client.get(f"/procedure/{doc_id}")
+        controls_raw = self.client.get(f"/procedure/{doc_id}/controls")
+        requirements_raw = self.client.get(f"/procedure/{doc_id}/requirements")
+
+        doc = self._parse_document(detail, controls_raw, requirements_raw)
+        file_stem = doc.code or f"GOV-{doc.id}"
+        self._export_document(file_stem, doc)
+
+        self._rebuild_index(raw_list)
+        self._log(f"Exporting governance... {file_stem} done")
+
+    def _rebuild_index(self, api_list: List[Dict[str, Any]]) -> None:
+        """Rebuild index from API list + local frontmatter."""
+        local_fm = self._read_local_frontmatter()
+
+        frontmatter: Dict[str, Any] = {
+            "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "document_count": len(api_list),
+        }
+
+        body_parts: List[str] = []
+        for raw in api_list:
+            code = raw.get("procedureCode", "")
+            file_stem = code or f"GOV-{raw.get('id', 0)}"
+            fm = local_fm.get(file_stem)
+            if fm:
+                doc_label = fm.get("id", file_stem)
+                title = fm.get("title", "")
+                owner = fm.get("owner", "")
+                status = fm.get("status", "")
+                classification = fm.get("classification", "")
+                review_date = fm.get("review_date", "")
+            else:
+                doc_label = code or file_stem
+                title = str(raw.get("name", "")).strip()
+                owner = ""
+                status = ""
+                classification = ""
+                review_date = ""
+
+            heading = f"## [{doc_label}]({file_stem}.md)"
+            if title:
+                heading += f" — {title}"
+            body_parts.append(heading)
+            body_parts.append("")
+            body_parts.append(f"- **Owner:** {owner}")
+            body_parts.append(f"- **Status:** {status}")
+            if classification:
+                body_parts.append(f"- **Classification:** {classification}")
+            if review_date:
+                body_parts.append(f"- **Review Date:** {review_date}")
+            body_parts.append("")
+
+        md_content = MarkdownFormatter.render(
+            title="Governance Documents",
+            body="\n".join(body_parts),
+            frontmatter=frontmatter,
+        )
+
+        index_path = self.output_dir / "index.md"
+        if self._should_write(index_path):
+            with open(index_path, "w", encoding="utf-8") as f:
+                f.write(md_content)
 
     def _parse_document(
         self,
@@ -186,6 +268,16 @@ class GovernanceExporter(BaseExporter):
         if self._should_write(index_path):
             with open(index_path, "w", encoding="utf-8") as f:
                 f.write(md_content)
+
+
+def _find_by_code(
+    items: List[Dict[str, Any]], code: str, code_key: str,
+) -> Optional[Dict[str, Any]]:
+    """Find an item in the API list by its code field."""
+    for item in items:
+        if item.get(code_key) == code:
+            return item
+    return None
 
 
 def _extract_optional_str(data: Dict[str, Any], *keys: str) -> Optional[str]:

@@ -56,13 +56,20 @@ human-readable data formats (Markdown and JSON). You can export
   ├── risks/
   └── vendors/
   ```
-- Now you can copy all or individual parts by using:
+- Now you can export all data or individual categories:
   - `ctrlmap-cli --copy-all` — export everything
-  - `ctrlmap-cli --copy-gov` — governance documents
-  - `ctrlmap-cli --copy-pols` — policies (alias: `--copy-pol`)
-  - `ctrlmap-cli --copy-pros` — procedures (alias: `--copy-pro`)
-  - `ctrlmap-cli --copy-risks` — risk register (alias: `--copy-risk`)
-  - `ctrlmap-cli --copy-vendors` — vendor register (alias: `--copy-vendor`)
+  - `ctrlmap-cli --copy-govs` — all governance documents
+  - `ctrlmap-cli --copy-pols` — all policies
+  - `ctrlmap-cli --copy-pros` — all procedures
+  - `ctrlmap-cli --copy-risks` — all risks
+  - `ctrlmap-cli --copy-vendors` — all vendors
+- Or export a single item by its code:
+  - `ctrlmap-cli --copy-gov GOV-1` — one governance document
+  - `ctrlmap-cli --copy-pol POL-5` — one policy
+  - `ctrlmap-cli --copy-pro PRO-3` — one procedure
+  - `ctrlmap-cli --copy-risk RSK-66` — one risk
+  - `ctrlmap-cli --copy-vendor VND-17` — one vendor
+  Single-item export updates the category index file automatically.
 - Optional flags:
   - `--force` — overwrite existing files without confirmation
   - `--keep-raw-json` — also write raw JSON files alongside Markdown

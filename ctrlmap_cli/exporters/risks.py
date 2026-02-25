@@ -5,6 +5,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+from ctrlmap_cli.exceptions import ItemNotFoundError
 from ctrlmap_cli.exporters.base import BaseExporter
 from ctrlmap_cli.formatters.markdown_formatter import MarkdownFormatter
 from ctrlmap_cli.models.risks import (
@@ -60,6 +61,110 @@ class RisksExporter(BaseExporter):
             )
         else:
             self._log("Exporting risks... done (0 documents)")
+
+    def export_single(self, item_code: str) -> None:
+        self._ensure_output_dir()
+        full_code, _ = self._parse_item_code(item_code, "RSK")
+        self._log(f"Exporting risk {full_code}...")
+
+        response = self.client.list_risks()
+        raw_list: List[Dict[str, Any]] = []
+        if isinstance(response, dict):
+            raw_list = response.get("riskDTOS", [])
+        elif isinstance(response, list):
+            raw_list = response
+
+        # The risk list only has API entity IDs, not the user-facing riskid
+        # code. We must fetch each detail to find the one matching the code.
+        found_detail = None
+        found_doc_id = 0
+        for raw in raw_list:
+            doc_id = _as_int(raw.get("id", 0))
+            detail = self.client.get_risk(doc_id)
+            if str(detail.get("riskid", "")) == full_code:
+                found_detail = detail
+                found_doc_id = doc_id
+                break
+
+        if found_detail is None:
+            raise ItemNotFoundError(
+                f"Risk '{full_code}' not found in ControlMap. "
+                "Check the code and try again."
+            )
+
+        areas_raw = self.client.get_risk_areas(found_doc_id)
+
+        doc = self._parse_document(found_detail, areas_raw)
+        file_stem = doc.code or f"RSK-{doc.id}"
+        self._export_document(file_stem, doc)
+
+        self._rebuild_index(raw_list)
+        self._log(f"Exporting risks... {file_stem} done")
+
+    def _rebuild_index(self, api_list: List[Dict[str, Any]]) -> None:
+        """Rebuild index from API list + local frontmatter.
+
+        The risk list only contains API entity IDs, not the user-facing
+        riskid codes. We cannot reliably map API IDs to local files, so
+        the index is built from locally exported files only. The API list
+        length is used for ``document_count``.
+        """
+        local_fm = self._read_local_frontmatter()
+
+        frontmatter: Dict[str, Any] = {
+            "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "document_count": len(api_list),
+        }
+        generated_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        body_parts: List[str] = []
+        noun = "risk" if len(api_list) == 1 else "risks"
+        body_parts.append(f"{len(api_list)} {noun} exported on {generated_date}.")
+        body_parts.append("")
+        for file_stem in sorted(local_fm.keys()):
+            fm = local_fm[file_stem]
+            doc_label = fm.get("id", file_stem)
+            title = fm.get("title", "")
+            owner = fm.get("owner", "")
+            status = fm.get("status", "")
+            treatment = fm.get("treatment", "")
+            cr = fm.get("current_risk", {})
+            tr = fm.get("target_risk", {})
+            if isinstance(cr, dict):
+                cr_score = cr.get("score", 0)
+                cr_level = cr.get("level", "")
+            else:
+                cr_score = 0
+                cr_level = ""
+            if isinstance(tr, dict):
+                tr_score = tr.get("score", 0)
+                tr_level = tr.get("level", "")
+            else:
+                tr_score = 0
+                tr_level = ""
+
+            heading = f"## [{doc_label}]({file_stem}.md)"
+            if title:
+                heading += f" — {title}"
+            body_parts.append(heading)
+            body_parts.append("")
+            body_parts.append(f"- **Owner:** {owner}")
+            body_parts.append(f"- **Status:** {status}")
+            body_parts.append(f"- **Treatment:** {treatment}")
+            body_parts.append(f"- **Current Risk:** {cr_score} — {cr_level}")
+            body_parts.append(f"- **Target Risk:** {tr_score} — {tr_level}")
+            body_parts.append("")
+
+        md_content = MarkdownFormatter.render(
+            title="Risks",
+            body="\n".join(body_parts),
+            frontmatter=frontmatter,
+        )
+
+        index_path = self.output_dir / "index.md"
+        if self._should_write(index_path):
+            with open(index_path, "w", encoding="utf-8") as f:
+                f.write(md_content)
 
     def _parse_document(
         self,

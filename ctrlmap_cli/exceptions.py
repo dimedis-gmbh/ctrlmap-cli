@@ -16,3 +16,7 @@ class ApiError(CtrlMapError):
 
 class AuthenticationError(ApiError):
     pass
+
+
+class ItemNotFoundError(ApiError):
+    pass

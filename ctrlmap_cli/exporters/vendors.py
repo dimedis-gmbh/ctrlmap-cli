@@ -7,6 +7,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
+from ctrlmap_cli.exceptions import ItemNotFoundError
 from ctrlmap_cli.exporters.base import BaseExporter
 from ctrlmap_cli.formatters.markdown_formatter import MarkdownFormatter
 from ctrlmap_cli.models.vendors import (
@@ -236,6 +237,112 @@ class VendorsExporter(BaseExporter):
             )
         else:
             self._log("Exporting vendors... done (0 documents)")
+
+    def export_single(self, item_code: str) -> None:
+        self._ensure_output_dir()
+        full_code, _ = self._parse_item_code(item_code, "VND")
+        self._log(f"Exporting vendor {full_code}...")
+
+        response = self.client.list_vendors()
+        raw_list: List[Dict[str, Any]] = []
+        if isinstance(response, list):
+            raw_list = response
+        elif isinstance(response, dict):
+            for key in ("vendorDTOS", "vendors", "content"):
+                if key in response and isinstance(response[key], list):
+                    raw_list = response[key]
+                    break
+
+        # The vendor list only has API entity IDs, not the user-facing
+        # vendor code. Fetch each detail to find the one matching the code.
+        found_detail = None
+        found_vendor_id = 0
+        for raw in raw_list:
+            vendor_id = _as_int(raw.get("id", 0))
+            if not vendor_id:
+                continue
+            detail = self.client.get_vendor(vendor_id)
+            if str(detail.get("code", "")) == full_code:
+                found_detail = detail
+                found_vendor_id = vendor_id
+                break
+
+        if found_detail is None:
+            raise ItemNotFoundError(
+                f"Vendor '{full_code}' not found in ControlMap. "
+                "Check the code and try again."
+            )
+
+        risks_raw = self.client.get_vendor_risks(found_vendor_id)
+        hyperlinks_raw = self.client.get_vendor_hyperlinks(found_vendor_id)
+        contacts_raw = self.client.get_vendor_contacts(found_vendor_id)
+        quick_assessment_raw = self._fetch_quick_assessment(found_detail)
+
+        doc = self._parse_document(
+            found_detail, risks_raw, hyperlinks_raw, contacts_raw, quick_assessment_raw,
+        )
+        code_number = doc.code.replace("VND-", "") if doc.code.startswith("VND-") else str(doc.id)
+        file_stem = f"VND-{code_number}"
+        self._export_document(file_stem, doc)
+
+        self._rebuild_index(raw_list)
+        self._log(f"Exporting vendors... {file_stem} done")
+
+    def _rebuild_index(self, api_list: List[Dict[str, Any]]) -> None:
+        """Rebuild index from API list + local frontmatter.
+
+        The vendor list only contains API entity IDs, not the user-facing
+        vendor codes. We cannot reliably map API IDs to local files, so
+        the index is built from locally exported files only. The API list
+        length is used for ``document_count``.
+        """
+        local_fm = self._read_local_frontmatter()
+
+        frontmatter: Dict[str, Any] = {
+            "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "document_count": len(api_list),
+        }
+        generated_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        body_parts: List[str] = []
+        noun = "vendor" if len(api_list) == 1 else "vendors"
+        body_parts.append(f"{len(api_list)} {noun} exported on {generated_date}.")
+        body_parts.append("")
+        for file_stem in sorted(local_fm.keys()):
+            fm = local_fm[file_stem]
+            doc_label = fm.get("id", file_stem)
+            name = fm.get("title", "")
+            status = fm.get("status", "")
+            vendor_type = fm.get("vendor_type", "")
+            risk_score = fm.get("risk_score", 0)
+            tier = fm.get("tier", "")
+
+            heading = f"## [{doc_label}]({file_stem}.md)"
+            if name and len(heading + f" — {name}") <= _MAX_LINE_LENGTH:
+                heading += f" — {name}"
+                body_parts.append(heading)
+            else:
+                body_parts.append(heading)
+                if name:
+                    body_parts.append("")
+                    body_parts.append(_format_bullet(f"**Name:** {name}"))
+            body_parts.append("")
+            body_parts.append(_format_bullet(f"**Status:** {status}"))
+            body_parts.append(_format_bullet(f"**Vendor Type:** {vendor_type}"))
+            body_parts.append(_format_bullet(f"**Risk Score:** {risk_score}"))
+            body_parts.append(_format_bullet(f"**Tier:** {tier}"))
+            body_parts.append("")
+
+        md_content = MarkdownFormatter.render(
+            title="Vendors",
+            body="\n".join(body_parts),
+            frontmatter=frontmatter,
+        )
+
+        index_path = self.output_dir / "index.md"
+        if self._should_write(index_path):
+            with open(index_path, "w", encoding="utf-8") as f:
+                f.write(md_content)
 
     def _fetch_quick_assessment(self, detail: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         assessment_id = _as_int(detail.get("vendorQuickAssessmentId"))

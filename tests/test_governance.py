@@ -453,6 +453,101 @@ class TestGovernanceExporterEdgeCases:
         assert parsed["body_markdown"] == ""
 
 
+class TestGovernanceSingleExport:
+    def test_export_single_by_full_code(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(37, "GOV-1"), _make_list_item(38, "GOV-2")],
+            details={37: _make_detail(37, "GOV-1")},
+            controls={37: _make_controls()},
+            requirements={37: _make_requirements()},
+        )
+
+        GovernanceExporter(client, tmp_path / "govs", force=True).export_single("GOV-1")
+
+        assert (tmp_path / "govs" / "GOV-1.md").exists()
+        content = (tmp_path / "govs" / "GOV-1.md").read_text()
+        assert "# GOV-1 — Test Title" in content
+
+    def test_export_single_by_numeric_code(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(37, "GOV-1")],
+            details={37: _make_detail(37, "GOV-1")},
+            controls={37: []},
+            requirements={37: []},
+        )
+
+        GovernanceExporter(client, tmp_path / "govs", force=True).export_single("1")
+
+        assert (tmp_path / "govs" / "GOV-1.md").exists()
+
+    def test_export_single_not_found_raises_error(self, tmp_path: Path) -> None:
+        from ctrlmap_cli.exceptions import ItemNotFoundError
+
+        client = _setup_client(
+            list_items=[_make_list_item(37, "GOV-1")],
+            details={},
+            controls={},
+            requirements={},
+        )
+
+        with pytest.raises(ItemNotFoundError, match="GOV-99"):
+            GovernanceExporter(client, tmp_path / "govs", force=True).export_single("GOV-99")
+
+    def test_export_single_rebuilds_index(self, tmp_path: Path) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(37, "GOV-1"), _make_list_item(38, "GOV-2")],
+            details={37: _make_detail(37, "GOV-1")},
+            controls={37: []},
+            requirements={37: []},
+        )
+
+        GovernanceExporter(client, tmp_path / "govs", force=True).export_single("GOV-1")
+
+        index = (tmp_path / "govs" / "index.md").read_text()
+        assert "document_count: 2" in index
+        assert "[GOV-1](GOV-1.md)" in index
+        assert "[GOV-2](GOV-2.md)" in index
+
+    def test_export_single_index_uses_local_frontmatter(self, tmp_path: Path) -> None:
+        govs = tmp_path / "govs"
+        govs.mkdir(parents=True)
+        # Pre-existing GOV-2 file with frontmatter
+        (govs / "GOV-2.md").write_text(
+            "---\nid: GOV-2\ntitle: Existing Doc\nowner: Bob\n"
+            "status: Draft\nclassification: Public\n---\n# GOV-2\n"
+        )
+
+        client = _setup_client(
+            list_items=[_make_list_item(37, "GOV-1"), _make_list_item(38, "GOV-2")],
+            details={37: _make_detail(37, "GOV-1")},
+            controls={37: []},
+            requirements={37: []},
+        )
+
+        GovernanceExporter(client, govs, force=True).export_single("GOV-1")
+
+        index = (govs / "index.md").read_text()
+        # GOV-2 entry should use local frontmatter data
+        assert "Existing Doc" in index
+        assert "Bob" in index
+
+    def test_export_single_progress_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        client = _setup_client(
+            list_items=[_make_list_item(37, "GOV-1")],
+            details={37: _make_detail(37, "GOV-1")},
+            controls={37: []},
+            requirements={37: []},
+        )
+
+        GovernanceExporter(client, tmp_path / "govs", force=True).export_single("GOV-1")
+
+        output = capsys.readouterr().out
+        assert "GOV-1" in output
+        assert "done" in output
+
+
 class TestGovernanceOverwrite:
     def test_force_overwrites_without_prompt(self, tmp_path: Path) -> None:
         govs = tmp_path / "govs"

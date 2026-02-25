@@ -47,7 +47,7 @@ python -m ctrlmap_cli --help
 
 ## Architecture
 
-- **CLI layer** (`cli.py`): `argparse` handles `--init`, `--copy-all`, `--copy-gov`, `--copy-pols`, `--copy-pros`, `--copy-risks`. No subcommands — all flags are mutually exclusive.
+- **CLI layer** (`cli.py`): `argparse` handles `--init`, `--copy-all`, plural bulk-export flags (`--copy-govs`, `--copy-pols`, `--copy-pros`, `--copy-risks`, `--copy-vendors`), and singular single-item flags (`--copy-gov CODE`, `--copy-pol CODE`, `--copy-pro CODE`, `--copy-risk CODE`, `--copy-vendor CODE`). No subcommands — all flags are mutually exclusive.
 - **HTTP client** (`client.py`): Wraps `requests.Session` with bearer token auth + `x-authprovider`/`x-tenanturi` headers. Maps HTTP errors to user-friendly exception subclasses.
 - **Config** (`config.py`): Reads/writes `.ctrlmap-cli.ini` via `configparser`. Config stored as an `AppConfig` dataclass.
 - **Exporters** (`exporters/`): One class per ControlMap domain (policies, governance, procedures, risks), all inheriting `BaseExporter`. Each fetches from the API, parses into dataclasses, and writes via formatters.
@@ -76,7 +76,7 @@ python -m ctrlmap_cli --help
 
 - All generated Markdown files: max 120 characters per line.
 - Linted with `markdownlint-cli2` (Node.js). Config: `.markdownlint-cli2.jsonc`.
-- Output folders: `govs/`, `policies/`, `procedures/`, `risks/` (not the longer names).
+- Output folders: `govs/`, `pols/`, `pros/`, `risks/`, `vendors/`.
 
 ## Task Tracking
 
